@@ -1,0 +1,61 @@
+{
+  "_readme": "What the engine searches for. Filled in from your resume the first time; change it any time in Search preferences.",
+  "_setup": true,
+  "queries": [],
+  "title_terms": {
+    "required": [],
+    "weighted": {},
+    "seniority": {
+      "senior": 6,
+      "sr": 6,
+      "lead": 6,
+      "manager": 8,
+      "head": 10,
+      "director": 9,
+      "principal": 5,
+      "specialist": 0,
+      "associate": -6,
+      "coordinator": -8,
+      "assistant": -12,
+      "intern": -40,
+      "junior": -20,
+      "jr": -20
+    }
+  },
+  "exclude_title": [
+    "intern",
+    "internship",
+    "co-op",
+    "student"
+  ],
+  "exclude_company": [],
+  "description_keywords": {},
+  "locations": {
+    "country": "CA",
+    "mode": "country",
+    "search_locations": [],
+    "home_city_terms": [],
+    "include_us_remote": true,
+    "include_us_onsite": false
+  },
+  "sources": {
+    "amazon_jobs": true
+  },
+  "min_salary_cad": 0,
+  "max_age_days": 30,
+  "keep_days": 45,
+  "min_score_to_save": 35,
+  "min_score_to_tailor": 50,
+  "min_score_for_ai": 60,
+  "max_ai_per_day": 40,
+  "max_tailor_per_run": 25,
+  "claude_model": "claude-sonnet-5-5",
+  "ats_companies": {
+    "_readme": "Company career boards checked directly (no key). Slugs that do not exist are skipped automatically and remembered in data/ats_cache.json. Add any company: the slug is the name in its careers URL, e.g. jobs.lever.co/<slug>, boards.greenhouse.io/<slug>, jobs.ashbyhq.com/<slug>.",
+    "candidates": []
+  },
+  "workday_sites": {
+    "_readme": "Optional. Paste Workday career URLs like https://<tenant>.wd3.myworkdayjobs.com/<site>. Each is searched with every query.",
+    "urls": []
+  }
+}

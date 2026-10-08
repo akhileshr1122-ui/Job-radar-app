@@ -1,0 +1,50 @@
+name: Build apps
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "extension/**", ".github/workflows/release.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.repository == 'akhileshr1122-ui/job-radar-app'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chrome extension zip
+        run: cd extension && zip -qr ../JobRadar-Chrome.zip .
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Signing key (keeps updates installable)
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: if [ -n "$KS" ]; then echo "$KS" | base64 -d > app/app/jobradar.jks; else echo "No ANDROID_KEYSTORE_B64 secret – debug-signed build"; fi
+
+      - name: Build APK
+        working-directory: app
+        run: gradle assembleRelease --no-daemon
+      - run: cp app/app/build/outputs/apk/release/app-release.apk JobRadar.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: Job Radar 1.${{ github.run_number }}
+          files: |
+            JobRadar.apk
+            JobRadar-Chrome.zip
+          make_latest: true

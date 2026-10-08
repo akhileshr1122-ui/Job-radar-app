@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Job Radar Autofill",
+  "version": "1.0.0",
+  "description": "Fills job application forms with your Job Radar profile and the resume tailored for that job. You review and submit.",
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" },
+  "action": { "default_popup": "popup.html", "default_icon": { "16": "icon16.png", "48": "icon48.png" } },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://api.github.com/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*", "https://job-boards.greenhouse.io/*", "https://*.greenhouse.io/*",
+        "https://jobs.lever.co/*", "https://jobs.eu.lever.co/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://*.myworkdayjobs.com/*", "https://*.myworkdaysite.com/*",
+        "https://apply.workable.com/*", "https://jobs.smartrecruiters.com/*",
+        "https://*.icims.com/*", "https://*.bamboohr.com/*", "https://*.recruitee.com/*", "https://jobs.jobvite.com/*",
+        "https://*.breezy.hr/*", "https://*.teamtailor.com/*", "https://*.personio.com/*", "https://*.rippling-ats.com/*",
+        "https://ats.rippling.com/*", "https://*.dayforcehcm.com/*", "https://*.successfactors.com/*", "https://*.taleo.net/*"
+      ],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

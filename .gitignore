@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+app/.gradle/
+app/build/
+app/app/build/
+app/local.properties
+*.tmp

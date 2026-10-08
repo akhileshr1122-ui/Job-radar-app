@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  body { width: 320px; margin: 0; font: 14px/1.45 system-ui, sans-serif; color: #1C2B2F; background: #EDF2F1; }
+  header { background: #0F4C5C; color: #fff; padding: 12px 14px; display: flex; gap: 10px; align-items: center; }
+  header img { width: 28px; height: 28px; } header b { display: block; } header small { opacity: .8; }
+  main { padding: 12px 14px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #4E6166; margin: 10px 0 3px; }
+  input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid #D6E0DE; border-radius: 6px; font: inherit; }
+  button { margin-top: 12px; width: 100%; padding: 9px; border: 0; border-radius: 8px; background: #0F4C5C; color: #fff; font: 600 14px system-ui, sans-serif; cursor: pointer; }
+  button.second { background: #fff; color: #0F4C5C; border: 1px solid #D6E0DE; }
+  p { margin: 8px 0; } .hint { color: #7D8F93; font-size: 12px; } .ok { color: #1B8A5A; } .err { color: #9A3B3B; }
+</style></head>
+<body>
+<header><img src="icon48.png" alt=""><div><b>Job Radar Autofill</b><small>Fills forms. You submit.</small></div></header>
+<main>
+  <button id="fill">Fill this application</button>
+  <p class="hint">Works on Greenhouse, Lever, Ashby, Workday, Workable, SmartRecruiters and more. On supported pages a "Fill with Job Radar" button also appears at the bottom right.</p>
+  <p id="status" class="hint"></p>
+  <label for="owner">GitHub account</label><input id="owner">
+  <label for="repo">Repository</label><input id="repo" value="job-radar">
+  <label for="token">GitHub token (Contents: read)</label><input id="token" type="password" autocomplete="off">
+  <button id="save" class="second">Save and test</button>
+</main>
+<script src="popup.js"></script>
+</body></html>
