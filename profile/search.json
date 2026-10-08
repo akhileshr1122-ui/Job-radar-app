@@ -57,5 +57,11 @@
   "workday_sites": {
     "_readme": "Optional. Paste Workday career URLs like https://<tenant>.wd3.myworkdayjobs.com/<site>. Each is searched with every query.",
     "urls": []
+  },
+  "filters": {
+    "hide_agencies": true,
+    "hide_no_company": true,
+    "hide_lmia": true,
+    "stale_days": 30
   }
 }

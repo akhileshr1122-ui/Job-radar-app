@@ -14,6 +14,11 @@ def nearest_place(location, cfg):
         return None
     return min(((p, km_between(here, ll), r) for p, ll, r in pts), key=lambda x: x[1])
 
+AGENCY = re.compile(r"\b(staffing|recruit(ment|ing|ers)?|headhunt\w*|personnel|placement|talent (solutions|partners|group)|search (group|partners)|"
+                    r"randstad|robert half|adecco|hays|kelly services|manpower|teksystems|insight global|aerotek|kforce|akkodis|modis|procom|"
+                    r"altis|vettd|jobot|cybercoders|motion recruitment|apex systems|lhh|spherion|express employment)\b", re.I)
+GHOST = re.compile(r"\blmia\b|labour market impact assessment|temporary foreign worker|\btfw\b", re.I)
+
 AMAZON_INTERNAL_TITLE = re.compile(r"account manager|vendor manager|category manager|marketplace|seller|retail|advertis|business development|program manager", re.I)
 
 
@@ -36,6 +41,14 @@ def score(job, cfg):
             return None
     if any(c.lower() == company for c in cfg.get("exclude_company", [])):
         return None
+    flt = cfg.get("filters", {})
+    if not job.get("manual"):
+        if flt.get("hide_agencies", True) and AGENCY.search(job["company"] or ""):
+            return None
+        if flt.get("hide_no_company", True) and not company.strip():
+            return None
+        if flt.get("hide_lmia", True) and GHOST.search(desc):
+            return None
 
     amazon_co = company.startswith("amazon")
     required = tt.get("required") or cfg.get("_auto_required", [])

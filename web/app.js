@@ -658,6 +658,11 @@ function ProfileEditor({ resume, setResume, say }) {
 
 // ------------------------------------------------------------------ search preferences (incl. locations)
 
+const SOURCES = [["company_boards", "Company career pages"], ["adzuna", "Adzuna"], ["jsearch", "LinkedIn, Indeed, Glassdoor (JSearch)"], ["jooble", "Jooble"],
+  ["jobbank", "Job Bank (Canada)"], ["eluta", "Eluta (Canada)"], ["amazon_jobs", "Amazon Jobs"], ["workday", "Big-brand Workday sites"],
+  ["remotive", "Remotive"], ["remoteok", "Remote OK"], ["himalayas", "Himalayas"], ["jobicy", "Jobicy"], ["weworkremotely", "We Work Remotely"],
+  ["workingnomads", "Working Nomads"], ["themuse", "The Muse"]];
+
 function withDefaults(search, resume) {
   const d = clone(search || {});
   d.locations = d.locations || {};
@@ -730,6 +735,18 @@ function SearchEditor({ search, setSearch, say, resume }) {
       ${num("min_score_to_save", "Keep jobs scoring at least")}${num("min_score_to_tailor", "Tailor a resume when the score is at least")}
       ${num("min_score_for_ai", "Use AI when the score is at least")}${num("max_ai_per_day", "AI resumes per day at most")}
     </div></div>
+
+    <div class="card"><h3>Where jobs come from</h3>
+      <p class="hint">Untick a source to stop searching it.</p>
+      <div class="grid2">${SOURCES.map(([k, label]) => html`<label class="row"><input type="checkbox" checked=${(d.sources || {})[k] !== false}
+        onChange=${(e) => set((n) => { n.sources = { ...(n.sources || {}), [k]: e.target.checked }; })} />${label}</label>`)}</div></div>
+
+    <div class="card"><h3>Skip low-quality postings</h3>
+      ${[["hide_agencies", "Recruiting and staffing agencies"], ["hide_lmia", "Postings that mention LMIA or temporary foreign workers"], ["hide_no_company", "Postings with no company name"]].map(([k, label]) =>
+        html`<label class="row"><input type="checkbox" checked=${(d.filters || {})[k] !== false} onChange=${(e) => set((n) => { n.filters = { ...(n.filters || {}), [k]: e.target.checked }; })} />${label}</label>`)}
+      <div class="field" style="max-width:320px"><label>Drop jobs still listed after this many days (often never filled)</label>
+        <input class="input" type="number" value=${(d.filters || {}).stale_days ?? 30} onInput=${(e) => set((n) => { n.filters = { ...(n.filters || {}), stale_days: +e.target.value || 0 }; })} /></div>
+    </div>
 
     <div class="card"><h3>Companies to watch</h3>
       <p class="hint">One per line: the name in the company's careers link, e.g. jobs.lever.co/<b>name</b> or boards.greenhouse.io/<b>name</b>. Names that don't exist are skipped.</p>

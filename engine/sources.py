@@ -605,19 +605,33 @@ def jooble(cfg, report):
 BOARD_SOURCES = [amazon_jobs, jobbank, eluta, remotive, remoteok, himalayas, jobicy, weworkremotely, workingnomads, themuse, adzuna, jooble, workday]
 
 
+def source_on(cfg, name):
+    """Sources can be switched off in Search preferences (profile/search.json → "sources")."""
+    return cfg.get("sources", {}).get(name, True) is not False
+
+
 def fetch_all(cfg, cache, state):
     report, jobs = {}, []
     try:
-        jobs.extend(jsearch(cfg, report, state))
+        if source_on(cfg, "jsearch"):
+            jobs.extend(jsearch(cfg, report, state))
+        else:
+            report["jsearch"] = "off"
     except Exception as e:
         report["jsearch"] = f"error: {e!r}"[:200]
     for fn in BOARD_SOURCES:
+        if not source_on(cfg, fn.__name__):
+            report[fn.__name__] = "off"
+            continue
         try:
             jobs.extend(fn(cfg, report))
         except Exception as e:  # never let one source kill the run
             report[fn.__name__] = f"error: {e!r}"[:200]
     try:
-        jobs.extend(ats_boards(cfg, cache, report))
+        if source_on(cfg, "company_boards"):
+            jobs.extend(ats_boards(cfg, cache, report))
+        else:
+            report["company_boards"] = "off"
     except Exception as e:
         report["ats"] = f"error: {e!r}"[:200]
     return jobs, report

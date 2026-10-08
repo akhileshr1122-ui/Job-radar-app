@@ -240,6 +240,14 @@ def main():
         if k in added_keys:
             retailor_ids.add(jid)
 
+    # jobs that stay listed for weeks are often evergreen or "ghost" postings
+    stale_days = cfg.get("filters", {}).get("stale_days", 30)
+    if stale_days:
+        cut = now - timedelta(days=stale_days)
+        for jid in [k for k, r in merged.items() if not r.get("manual") and status_of.get(k) not in TRACKED
+                    and datetime.fromisoformat(r["first_seen"]) < cut]:
+            del merged[jid]
+
     # keep jobs that dropped out of this run: tracked by the user, added by the user, or seen recently and still passing
     keep_cut = now - timedelta(days=cfg.get("keep_days", 45))
     seen_keys = set(best)
