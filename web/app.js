@@ -35,7 +35,7 @@ function Ring({ score, big }) {
 
 function App() {
   const [ready, setReady] = useState(gh.connected());
-  const [route, setRoute] = useState(restore("jr.route", "jobs"));
+  const [route, setRoute] = useState(["jobs", "boards", "profile", "search", "settings"].includes(location.hash.slice(1)) ? location.hash.slice(1) : restore("jr.route", "jobs"));
   const [file, setFile] = useState(restore("jr.jobs", null));
   const [resume, setResume] = useState(restore("jr.resume", null));
   const [search, setSearch] = useState(null);
@@ -758,6 +758,80 @@ function SearchEditor({ search, setSearch, say, resume }) {
   </div>`;
 }
 
+
+// ------------------------------------------------------------------ AI setup guide
+
+const AI_OS = {
+  win: {
+    label: "Windows",
+    open: "Click Start, type PowerShell and open Windows PowerShell. Use the normal one, not \u201cRun as administrator\u201d.",
+    install: "irm https://claude.ai/install.ps1 | iex",
+    installNote: "Nothing seems to happen for up to a minute. Wait until the PS C:\\Users\\\u2026> prompt comes back.",
+    alt: [
+      ["Not found after installing? Run it from its install folder", '& "$env:USERPROFILE\\.local\\bin\\claude.exe" setup-token'],
+      ["Or install with WinGet, then open a new PowerShell", "winget install Anthropic.ClaudeCode"],
+      ["Or from Command Prompt (cmd)", "curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd"],
+    ],
+  },
+  mac: {
+    label: "Mac",
+    open: "Press Cmd + Space, type Terminal and press Enter.",
+    install: "curl -fsSL https://claude.ai/install.sh | bash",
+    installNote: "Wait until the prompt comes back.",
+    alt: [
+      ["Not found after installing? Run it from its install folder", "~/.local/bin/claude setup-token"],
+      ["Or install with Homebrew", "brew install --cask claude-code"],
+    ],
+  },
+  linux: {
+    label: "Linux",
+    open: "Open your terminal app.",
+    install: "curl -fsSL https://claude.ai/install.sh | bash",
+    installNote: "Wait until the prompt comes back.",
+    alt: [["Not found after installing? Run it from its install folder", "~/.local/bin/claude setup-token"]],
+  },
+};
+
+function guessOs() {
+  const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || "").toLowerCase();
+  return p.includes("win") ? "win" : p.includes("mac") ? "mac" : "linux";
+}
+
+function Cmd({ text, say }) {
+  return html`<div class="cmd"><code>${text}</code>
+    <button class="btn small" onClick=${async () => say(await copy(text) ? "Copied" : "Couldn't copy, select the text instead")}>Copy</button></div>`;
+}
+
+function AiSetup({ repoUrl, say }) {
+  const [os, setOs] = useState(guessOs());
+  const o = AI_OS[os];
+  return html`<div class="aisetup">
+    <p><b>Use your Claude Pro or Max plan (no API bill).</b> One-time setup, about 5 minutes, on any computer.</p>
+    <div class="tabs" role="tablist">${Object.entries(AI_OS).map(([k, v]) => html`<button role="tab" aria-selected=${k === os} onClick=${() => setOs(k)}>${v.label}</button>`)}</div>
+    <ol class="steps">
+      <li><b>Open a terminal.</b> ${o.open}</li>
+      <li><b>Install Claude Code.</b> Paste this and press Enter:<${Cmd} text=${o.install} say=${say} /><span class="hint">${o.installNote}</span></li>
+      <li><b>Close the window and open a new one</b> so it finds the new command, then check it:<${Cmd} text="claude --version" say=${say} />
+        <span class="hint">You should see a version number.</span></li>
+      <li><b>Get your token.</b><${Cmd} text="claude setup-token" say=${say} />
+        <span class="hint">A browser opens: sign in with your Claude Pro/Max account and approve. Back in the terminal, copy the whole token that starts with <code>sk-ant-oat</code>${os === "win" ? " (select it, then right-click to copy)" : ""}.</span></li>
+      <li><b>Save it in your Job Radar.</b> Open <a href=${repoUrl + "/settings/secrets/actions/new"} target="_blank" rel="noopener">your repo's new secret page</a>, set the name to
+        <${Cmd} text="CLAUDE_CODE_OAUTH_TOKEN" say=${say} /> paste the token as the secret and click <b>Add secret</b>.</li>
+      <li><b>Turn it on.</b> Click <b>Run a search now</b> above. This page says "On" after the run finishes.</li>
+    </ol>
+    <details class="trouble"><summary>Didn't work? Try these</summary>
+      <ul class="reasons">
+        <li><b>"claude is not recognized" / "command not found":</b> the install worked but the terminal can't find it yet. Open a new window first. If it still fails:</li>
+        ${o.alt.map(([t, c]) => html`<li>${t}:<${Cmd} text=${c} say=${say} /></li>`)}
+        ${os === "win" ? html`<li><b>Prompt shows ${"C:\\WINDOWS\\system32"}:</b> that's an administrator window. Close it and open PowerShell normally.</li>
+          <li><b>"running scripts is disabled":</b> run <${Cmd} text="Set-ExecutionPolicy -Scope CurrentUser RemoteSigned" say=${say} /> then try the install again.</li>` : null}
+        <li><b>Browser didn't open:</b> the terminal shows a link. Copy it into your browser, approve, and paste the code back if it asks.</li>
+        <li><b>Still "Off" after a search:</b> check the secret name is exactly <code>CLAUDE_CODE_OAUTH_TOKEN</code> and the token has no spaces at the start or end. Tokens last about a year; run <code>claude setup-token</code> again for a new one.</li>
+        <li>Full guide: <a href="https://code.claude.com/docs/en/setup" target="_blank" rel="noopener">Claude Code setup</a>.</li>
+      </ul></details>
+  </div>`;
+}
+
 // ------------------------------------------------------------------ settings
 
 function Settings({ report, say, onDisconnect, file }) {
@@ -787,31 +861,57 @@ function Settings({ report, say, onDisconnect, file }) {
 
     <div class="card"><h3>AI resumes and interview prep</h3>
       <p>${report?.ai_enabled ? "On." : "Off: resumes are tailored by keyword matching."} ${report?.ai_used_today != null ? `${report.ai_used_today} AI resumes today.` : ""}</p>
-      <p><b>Use your Claude Pro or Max plan (no API bill):</b></p>
-      <ol class="steps">
-        <li>Install Claude Code on your computer: <a href="https://code.claude.com/docs/en/setup" target="_blank" rel="noopener">setup guide</a>.</li>
-        <li>In a terminal run <code>claude setup-token</code> and approve in the browser. Copy the token it prints.</li>
-        <li>Open <a href=${repoUrl + "/settings/secrets/actions/new"} target="_blank" rel="noopener">your repo's new secret page</a>, name it <code>CLAUDE_CODE_OAUTH_TOKEN</code> and paste the token.</li>
-      </ol>
+      <${AiSetup} repoUrl=${repoUrl} say=${say} />
       <p class="hint">Or add <code>ANTHROPIC_API_KEY</code> instead to pay per use. The token is tied to your own plan, so each person uses their own.</p></div>
 
     <div class="card"><h3>More job sources (free keys)</h3>
-      <ul class="reasons">
-        <li><b>Adzuna</b>: sign up at <a href="https://developer.adzuna.com" target="_blank" rel="noopener">developer.adzuna.com</a>, add secrets <code>ADZUNA_APP_ID</code> and <code>ADZUNA_APP_KEY</code>.</li>
-        <li><b>LinkedIn, Indeed, Glassdoor via Google for Jobs</b>: subscribe to JSearch's free plan on <a href="https://rapidapi.com" target="_blank" rel="noopener">rapidapi.com</a>, add secret <code>RAPIDAPI_KEY</code>.</li>
-        <li><b>Jooble</b>: get a key at <a href="https://jooble.org/api/about" target="_blank" rel="noopener">jooble.org/api/about</a>, add secret <code>JOOBLE_KEY</code>.</li>
-      </ul>
-      <a class="btn small" href=${repoUrl + "/settings/secrets/actions"} target="_blank" rel="noopener">Open your repo secrets</a></div>
+      <p>Each key below is free and adds more jobs to every search. Add one, some or all.</p>
+      <p><b>How to add a key to Job Radar</b> (same for every key):</p>
+      <ol class="steps">
+        <li>Get the key from the site (steps below) and keep that tab open.</li>
+        <li>Open <a href=${repoUrl + "/settings/secrets/actions/new"} target="_blank" rel="noopener">your repo's new secret page</a> (sign in to GitHub if asked).</li>
+        <li>In <b>Name</b> paste the secret name shown below (tap Copy), in <b>Secret</b> paste the key, then click <b>Add secret</b>.</li>
+        <li>Click <b>Run a search now</b> above. The new source shows under "Last search" when it finishes.</li>
+      </ol>
+      <details class="trouble"><summary>Adzuna: big Canada and US job board</summary>
+        <ol class="steps">
+          <li>Go to <a href="https://developer.adzuna.com/signup" target="_blank" rel="noopener">developer.adzuna.com</a> and create a free account.</li>
+          <li>Open <b>Dashboard → API Access Details</b>. You'll see an Application ID and an Application Key.</li>
+          <li>Add two secrets: the ID as <${Cmd} text="ADZUNA_APP_ID" say=${say} /> and the Key as <${Cmd} text="ADZUNA_APP_KEY" say=${say} /></li>
+        </ol></details>
+      <details class="trouble"><summary>LinkedIn, Indeed, Glassdoor (through Google for Jobs)</summary>
+        <ol class="steps">
+          <li>Create a free account at <a href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch" target="_blank" rel="noopener">rapidapi.com → JSearch</a>.</li>
+          <li>Click <b>Subscribe to test</b> and choose the free <b>Basic</b> plan (no card needed).</li>
+          <li>On the JSearch page, copy the value next to <b>X-RapidAPI-Key</b>.</li>
+          <li>Add it as <${Cmd} text="RAPIDAPI_KEY" say=${say} /> <span class="hint">The free plan allows about 200 searches a month, so Job Radar uses it once a day.</span></li>
+        </ol></details>
+      <details class="trouble"><summary>Jooble: collects jobs from many sites</summary>
+        <ol class="steps">
+          <li>Go to <a href="https://jooble.org/api/about" target="_blank" rel="noopener">jooble.org/api/about</a> and fill in the short form. The key arrives by email.</li>
+          <li>Add it as <${Cmd} text="JOOBLE_KEY" say=${say} /></li>
+        </ol></details>
+      <a class="btn small" href=${repoUrl + "/settings/secrets/actions"} target="_blank" rel="noopener">See the secrets you've added</a></div>
 
     ${report ? html`<div class="card"><h3>Last search</h3>
       <p>${report.raw} postings read, ${report.unique} kept, ${report.new} new, ${report.tailored_this_run} resumes written.</p>
       <div class="kv">${Object.entries(src).filter(([, v]) => typeof v !== "object").map(([k, v]) => html`<span>${k}</span><span class="hint">${String(v)}</span>`)}</div></div>` : null}
 
     <div class="card"><h3>Apps</h3>
-      <ul class="reasons">
-        <li><b>Chrome extension</b> (fills application forms): download <a href="https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest/download/JobRadar-Chrome.zip">JobRadar-Chrome.zip</a>, unzip, open <code>chrome://extensions</code>, turn on Developer mode, click Load unpacked and pick the folder.</li>
-        <li><b>Android app</b>: <a href="https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest/download/JobRadar.apk">JobRadar.apk</a>.</li>
-      </ul></div>
+      <p><b>Chrome extension</b> fills job application forms with your details and tailored resume. You check and click Submit yourself.</p>
+      <ol class="steps">
+        <li>Download <a href="https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest/download/JobRadar-Chrome.zip">JobRadar-Chrome.zip</a> and unzip it (right-click → Extract All on Windows, double-click on Mac).</li>
+        <li>In Chrome open <${Cmd} text="chrome://extensions" say=${say} /> (paste it into the address bar).</li>
+        <li>Turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b> and pick the unzipped folder.</li>
+        <li>Click the puzzle icon in Chrome's toolbar and pin <b>Job Radar</b>. Open it and enter the same GitHub account, repo and token you use here.</li>
+        <li>On a job application page, click <b>Fill with Job Radar</b>. Check the fields outlined in amber before you submit.</li>
+      </ol>
+      <p><b>Android app</b></p>
+      <ol class="steps">
+        <li>On your phone, download <a href="https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest/download/JobRadar.apk">JobRadar.apk</a> and open it.</li>
+        <li>If Android asks, allow your browser to <b>install unknown apps</b>, then tap Install.</li>
+        <li>Open Job Radar → Settings and enter your GitHub account, repo name and token, then tap <b>Save & load jobs</b>.</li>
+      </ol></div>
 
     <div class="card"><h3>Connection</h3><p>${gh.conn.owner}/${gh.conn.repo}</p>
       <div class="row"><button class="btn" onClick=${() => { const t = document.documentElement.dataset.theme; document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; }}>Switch light / dark</button>

@@ -114,6 +114,7 @@ fun ProfileScreen(vm: MainVM, modifier: Modifier, onEdit: () -> Unit) {
 
 @Composable
 fun SettingsScreen(vm: MainVM, modifier: Modifier, onDone: () -> Unit, onEditSearch: () -> Unit) {
+    val ctx = LocalContext.current
     var owner by remember { mutableStateOf(vm.repo.owner) }
     var repo by remember { mutableStateOf(vm.repo.repo) }
     var token by remember { mutableStateOf(vm.repo.token) }
@@ -136,6 +137,22 @@ fun SettingsScreen(vm: MainVM, modifier: Modifier, onDone: () -> Unit, onEditSea
         }, modifier = Modifier.fillMaxWidth()) { Text("Save & load jobs") }
         OutlinedButton(onClick = { vm.runSearchNow() }, modifier = Modifier.fillMaxWidth(), enabled = vm.repo.configured) { Text("Run a search now") }
         OutlinedButton(onClick = onEditSearch, modifier = Modifier.fillMaxWidth(), enabled = vm.repo.configured) { Text("Search preferences (what, where, filters)") }
+        HorizontalDivider()
+        Text("AI resumes and more job sources", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text("AI-written resumes and cover letters can use your own Claude Pro or Max plan, with no API bill. It's a one-time setup on a computer:",
+            style = MaterialTheme.typography.bodySmall)
+        listOf(
+            "1. On a computer, open the Job Radar web app → Settings (button below).",
+            "2. Pick Windows, Mac or Linux and follow the steps: install Claude Code, run claude setup-token, copy the token.",
+            "3. Add it to your repo as the secret CLAUDE_CODE_OAUTH_TOKEN.",
+            "4. Tap Run a search now. Resumes are AI-written from the next search.",
+            "Free keys for Adzuna, LinkedIn/Indeed (JSearch) and Jooble are explained on the same page."
+        ).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        OutlinedButton(onClick = { openUrl(ctx, "https://akhileshr1122-ui.github.io/Job-radar-app/#settings") },
+            modifier = Modifier.fillMaxWidth()) { Text("Open the step-by-step setup guide") }
+        OutlinedButton(onClick = { openUrl(ctx, "https://github.com/${vm.repo.owner}/${vm.repo.repo}/settings/secrets/actions/new") },
+            modifier = Modifier.fillMaxWidth(), enabled = vm.repo.configured) { Text("Add a secret to my repo") }
+        HorizontalDivider()
         var followDays by remember { mutableFloatStateOf(vm.repo.followUpDays.toFloat()) }
         Text("Remind me to follow up ${followDays.toInt()} days after applying")
         Slider(followDays, { followDays = it; vm.repo.followUpDays = it.toInt() }, valueRange = 3f..21f, steps = 17)

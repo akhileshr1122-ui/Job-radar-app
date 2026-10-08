@@ -183,3 +183,9 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .setup h1 { font-size: 30px; letter-spacing: -.02em; margin: 14px 0 6px; line-height: 1.15; }
 .steps { padding-left: 20px; } .steps li { margin: 8px 0; }
 code { background: var(--mist); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+.aisetup .tabs { margin: 8px 0 4px; }
+.cmd { display: flex; align-items: center; gap: 8px; margin: 6px 0; background: var(--mist); border-radius: 8px; padding: 6px 6px 6px 10px; }
+.cmd code { flex: 1; min-width: 0; background: none; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.cmd .btn { flex: none; }
+.trouble { margin-top: 10px; } .trouble summary { cursor: pointer; font-weight: 600; color: var(--teal); }

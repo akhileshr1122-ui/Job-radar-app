@@ -15,7 +15,7 @@ The search runs every 4 hours on GitHub's free Actions minutes.
 ## Optional upgrades (secrets in your copy: Settings → Secrets and variables → Actions)
 | Secret | What it adds |
 |---|---|
-| `CLAUDE_CODE_OAUTH_TOKEN` | AI-written resumes, cover letters and interview prep using **your own Claude Pro or Max plan**. Run `claude setup-token` once (needs [Claude Code](https://code.claude.com/docs/en/setup)) and paste the token. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | AI-written resumes, cover letters and interview prep using **your own Claude Pro or Max plan**. Step-by-step for Windows, Mac and Linux (with fixes for "claude is not recognized") is in the web app under **Settings → AI resumes**. |
 | `ANTHROPIC_API_KEY` | Same, billed per use to a Claude API account instead. |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Adzuna aggregator (free at developer.adzuna.com). |
 | `RAPIDAPI_KEY` | LinkedIn, Indeed, Glassdoor and ZipRecruiter listings via Google for Jobs (JSearch free plan on rapidapi.com). |
