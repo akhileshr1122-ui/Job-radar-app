@@ -92,7 +92,8 @@ function App() {
     });
   }, []);
 
-  if (!ready) return html`<${Setup} onDone=${() => { setReady(true); setRoute("jobs"); }} say=${say} />`;
+  if (!ready) return html`<${Setup} onDone=${() => { setReady(true); setRoute("jobs"); }} say=${say} />
+    ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}`;
 
   const name = resume?.contact?.name;
   const title = name ? `${name}'s Job Radar` : "Job Radar";
@@ -164,6 +165,14 @@ function Setup({ onDone, say }) {
     setBusy(true);
     try {
       const me = await gh.whoAmI(token);
+      const exists = await fetch(`https://api.github.com/repos/${me.login}/${repo}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (exists.ok) {
+        gh.saveConn({ owner: me.login, repo, token });
+        say(`You already have ${me.login}/${repo}. Connected to it.`);
+        setTimeout(onDone, 1200);
+        setBusy(false);
+        return;
+      }
       await gh.createFromTemplate(token, me.login, repo);
       gh.saveConn({ owner: me.login, repo, token });
       say("Your Job Radar is ready. Next: upload your resume.");
