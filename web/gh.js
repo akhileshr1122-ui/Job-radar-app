@@ -120,3 +120,20 @@ export async function fileToBase64(file) {
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
   return btoa(bin);
 }
+
+/** Copy the latest engine (and search workflow) from the public Job Radar into this person's copy. */
+export async function updateFromTemplate(onStep) {
+  const T = TEMPLATE;
+  const r = await fetch(`${API}/repos/${T.owner}/${T.repo}/contents/engine?ref=main`, { headers: H({ Accept: "application/vnd.github+json" }) });
+  if (!r.ok) throw new Error(`Couldn't read the latest version (GitHub said ${r.status}).`);
+  const files = (await r.json()).filter((f) => f.type === "file").map((f) => f.path);
+  files.push(".github/workflows/search.yml");
+  let skipped = [];
+  for (const p of files) {
+    const src = await fetch(`${API}/repos/${T.owner}/${T.repo}/contents/${p}?ref=main`, { headers: H({ Accept: "application/vnd.github.raw+json" }) });
+    if (!src.ok) continue;
+    try { await putText(p, await src.text(), "Update Job Radar engine"); onStep?.(p); }
+    catch (e) { if (p.startsWith(".github")) skipped.push(p); else throw e; }
+  }
+  return skipped;
+}

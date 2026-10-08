@@ -745,6 +745,17 @@ function SearchEditor({ search, setSearch, say, resume }) {
 
 function Settings({ report, say, onDisconnect, file }) {
   const [run, setRun] = useState(null);
+  const [updating, setUpdating] = useState(false);
+  async function update() {
+    setUpdating(true);
+    try {
+      const skipped = await gh.updateFromTemplate();
+      await gh.runSearch().catch(() => {});
+      say(skipped.length ? "Engine updated (the schedule file needs a token with the workflow permission). A search is running; check back in 15 minutes."
+        : "Job Radar updated. A search is running; check back in 15 minutes.");
+    } catch (e) { say(e.message); }
+    setUpdating(false);
+  }
   useEffect(() => { gh.lastRun().then(setRun); }, []);
   const repoUrl = `https://github.com/${gh.conn.owner}/${gh.conn.repo}`;
   async function searchNow() { try { await gh.runSearch(); say("Search started. New jobs arrive in about 10–15 minutes."); } catch (e) { say(e.message); } }
@@ -752,8 +763,9 @@ function Settings({ report, say, onDisconnect, file }) {
   return html`<div class="page form">
     <h2>Settings</h2>
     <div class="card"><h3>Search</h3>
-      <p>${run ? `Last run ${age({ posted: run.updated_at })} ago: ${run.conclusion || run.status}.` : ""} Runs every 4 hours by itself.</p>
+      <p>${run ? `Last run ${age({ posted: run.updated_at }) === "now" ? "just now" : age({ posted: run.updated_at }) + " ago"}: ${run.status !== "completed" ? "still running" : run.conclusion === "success" ? "finished" : "failed – open the runs on GitHub to see why, or try Update below"}.` : "No search has run yet."} Runs every 4 hours by itself.</p>
       <div class="row"><button class="btn primary" onClick=${searchNow}>Run a search now</button>
+        <button class="btn" disabled=${updating} onClick=${update}>${updating ? "Updating…" : "Update Job Radar"}</button>
         <a class="btn" href=${repoUrl + "/actions"} target="_blank" rel="noopener">See runs on GitHub</a></div></div>
 
     <div class="card"><h3>AI resumes and interview prep</h3>

@@ -110,8 +110,16 @@ def score(job, cfg):
             age_pts = 3
 
     # ---- title fit
-    t_pts = sum(w for term, w in tt["weighted"].items() if _has(title, term))
-    if amazon_co:
+    t_pts = sum(w for term, w in tt.get("weighted", {}).items() if _has(title, term))
+    if not tt.get("weighted"):
+        # no hand-made weights (new profiles): reward titles close to the person's search phrases
+        words = cfg.get("_auto_required", [])
+        hits = [w for w in words if _has(title, w)]
+        t_pts += 10 * len(hits)
+        if any(_has(title, q.lower()) for q in cfg.get("queries", [])):
+            t_pts += 10
+            reasons.append("Title matches your search")
+    if amazon_co and cfg.get("_ex_amazon"):
         t_pts += 10
         reasons.append("Amazon role (ex-Amazon)")
     t_pts = min(t_pts, 32)

@@ -136,6 +136,16 @@ def heuristic_import(text):
         experience.append({"id": rid, "company": r["company"], "location": "", "title": r["title"], "start": r["start"], "end": r["end"],
                            "core": r["bullets"][:2], "flex": [{"text": b, "tags": []} for b in r["bullets"][2:]]})
     first_title = experience[0]["title"] if experience else ""
+    location = ""
+    for l in lines[1:6]:
+        m = re.search(r"([A-Z][A-Za-z .'-]+),\s*([A-Z]\d[A-Z]\s?\d[A-Z]\d)", l)  # Canadian postal code
+        if m:
+            location = f"{m.group(1).split(',')[-1].strip()}, Canada"
+            break
+        m = re.search(r"([A-Z][A-Za-z .'-]+),\s*(ON|QC|BC|AB|MB|SK|NS|NB|NL|PE|[A-Z]{2})\b", l)
+        if m and not re.search(r"@|\d{3}[- ]\d{3}", m.group(0)):
+            location = f"{m.group(1).strip()}, {m.group(2)}"
+            break
     education = []
     for l in [re.sub(r"\s+", " ", x).strip() for x in sec("education")]:
         d = DATES.search(l)
@@ -145,7 +155,7 @@ def heuristic_import(text):
         elif not re.match(r"(?i)relevant|courses|modules|gpa", l) and len(education) < 6:
             education.append({"credential": BULLET.sub("", l), "school": "", "dates": ""})
     return {
-        "contact": {"name": name.title() if name.isupper() else name, "display_name": name.upper(), "location": "",
+        "contact": {"name": name.title() if name.isupper() else name, "display_name": name.upper(), "location": location,
                     "phone": phone_m.group(1).strip() if phone_m else "", "email": email or "",
                     "linkedin": ("https://" + link_m.group(0).split("://")[-1]) if link_m else "", "work_authorization": ""},
         "headlines": {"main": first_title},
@@ -207,9 +217,10 @@ def import_resume(path, cfg):
 
 def setup_search(cfg, resume):
     """First-time search settings from a freshly imported resume."""
-    titles = list(dict.fromkeys(e["title"] for e in resume["experience"] if e.get("title")))[:4]
+    clean = lambda t: re.sub(r"\s*\(.*?\)|/.*$", "", t).strip()
+    titles = list(dict.fromkeys(clean(e["title"]) for e in resume["experience"] if e.get("title")))[:4]
     if titles:
-        cfg["queries"] = titles + [h for h in resume.get("headlines", {}).values() if h and len(h) < 60][:2]
+        cfg["queries"] = list(dict.fromkeys(titles + [clean(h) for h in resume.get("headlines", {}).values() if h and len(h) < 60][:2]))
     loc = resume.get("contact", {}).get("location", "")
     if loc:
         cfg.setdefault("locations", {})["search_locations"] = [{"place": loc, "radius_km": 50}]

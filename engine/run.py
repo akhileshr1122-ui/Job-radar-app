@@ -170,7 +170,8 @@ def main():
     locs = cfg.setdefault("locations", {})
     if not locs.get("search_locations") and resume.get("contact", {}).get("location"):
         locs["search_locations"] = [{"place": resume["contact"]["location"], "radius_km": 50}]
-    if not cfg.get("title_terms", {}).get("required"):
+    cfg["_ex_amazon"] = any("amazon" in (e.get("company") or "").lower() for e in resume.get("experience", []))
+    if not cfg.get("title_terms", {}).get("required") or not cfg.get("title_terms", {}).get("weighted"):
         words = sources.query_words(cfg, 12)
         cfg["_auto_required"] = list(dict.fromkeys(words + [w.replace("-", "") for w in words if "-" in w]))
     if not cfg.get("description_keywords"):
