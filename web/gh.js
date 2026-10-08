@@ -1,6 +1,6 @@
 // Talks to the person's own private Job Radar repo on GitHub. Nothing leaves their browser except calls to api.github.com.
 
-export const TEMPLATE = { owner: "akhileshr1122-ui", repo: "job-radar-app" };
+export const TEMPLATE = { owner: "akhileshr1122-ui", repo: "Job-radar-app" };
 
 const KEY = "jobradar.conn";
 function loadConn() {

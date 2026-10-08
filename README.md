@@ -2,8 +2,8 @@
 
 Your own job search assistant. It finds jobs that fit your resume across Canada and the US, scores each one, writes a tailored resume and cover letter for the best matches, and lets you review, edit and apply in one tap.
 
-- **Web app:** https://akhileshr1122-ui.github.io/job-radar-app/
-- **Android app and Chrome extension:** [latest release](https://github.com/akhileshr1122-ui/job-radar-app/releases/latest)
+- **Web app:** https://akhileshr1122-ui.github.io/Job-radar-app/
+- **Android app and Chrome extension:** [latest release](https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest)
 
 ## Get started (5 minutes, free)
 1. Open the web app and choose **I'm new**.

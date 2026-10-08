@@ -771,8 +771,8 @@ function Settings({ report, say, onDisconnect, file }) {
 
     <div class="card"><h3>Apps</h3>
       <ul class="reasons">
-        <li><b>Chrome extension</b> (fills application forms): download <a href="https://github.com/akhileshr1122-ui/job-radar-app/releases/latest/download/JobRadar-Chrome.zip">JobRadar-Chrome.zip</a>, unzip, open <code>chrome://extensions</code>, turn on Developer mode, click Load unpacked and pick the folder.</li>
-        <li><b>Android app</b>: <a href="https://github.com/akhileshr1122-ui/job-radar-app/releases/latest/download/JobRadar.apk">JobRadar.apk</a>.</li>
+        <li><b>Chrome extension</b> (fills application forms): download <a href="https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest/download/JobRadar-Chrome.zip">JobRadar-Chrome.zip</a>, unzip, open <code>chrome://extensions</code>, turn on Developer mode, click Load unpacked and pick the folder.</li>
+        <li><b>Android app</b>: <a href="https://github.com/akhileshr1122-ui/Job-radar-app/releases/latest/download/JobRadar.apk">JobRadar.apk</a>.</li>
       </ul></div>
 
     <div class="card"><h3>Connection</h3><p>${gh.conn.owner}/${gh.conn.repo}</p>
