@@ -26,6 +26,10 @@ jobs:
         with:
           ref: main   # latest state when this run starts (earlier runs may have committed meanwhile)
 
+      - name: Use the latest Job Radar engine
+        run: |
+          git clone -q --depth 1 https://github.com/akhileshr1122-ui/Job-radar-app /tmp/latest && rm -rf engine && cp -r /tmp/latest/engine engine || echo "kept current engine"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

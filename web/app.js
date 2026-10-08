@@ -124,7 +124,7 @@ function App() {
   return html`
     <div class=${"shell" + (job && route === "jobs" ? " has-detail" : "")} style=${showList ? "" : "grid-template-columns: 232px 1fr"}>
       <nav class="rail" aria-label="Main">
-        <div class="brand"><img src="icon.svg" alt="" /><div><b>${title}</b><small>${file?.updated ? "Searched " + age({ posted: file.updated }) + " ago" : "Your job search"}</small></div></div>
+        <div class="brand"><img src="icon.svg" alt="" /><div><b>${title}</b><small>${file?.updated ? (age({ posted: file.updated }) === "now" ? "Searched just now" : "Searched " + age({ posted: file.updated }) + " ago") : "Your job search"}</small></div></div>
         ${nav.map(([r, label, n]) => html`<button class="nav" aria-current=${route === r ? "page" : null} onClick=${() => go(r)}>${label}${n != null ? html`<span class="count">${n}</span>` : null}</button>`)}
         <div class="sep"></div>
         <button class="nav" onClick=${() => setAdding(true)}>Add a job</button>
@@ -285,7 +285,7 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
     </div>
     ${tab === "applied" ? html`<${Stats} statuses=${statuses} />` : null}
     <div class="joblist">
-      ${list.length === 0 ? html`<div class="empty">${jobs.length === 0 ? "No jobs yet. The search runs every 4 hours; tap Refresh after it finishes." : tab === "applied" ? "Jobs you apply to show up here so you can track interviews and offers." : "Nothing matches these filters."}</div>` :
+      ${list.length === 0 ? html`<div class="empty">${jobs.length === 0 ? "No jobs yet. Your first search takes 10–15 minutes after your resume is read; tap Refresh then. You can also start one from Settings → Run a search now." : tab === "applied" ? "Jobs you apply to show up here so you can track interviews and offers." : "Nothing matches these filters."}</div>` :
         list.map((j) => html`<button class="jobrow" aria-current=${sel === j.id ? "true" : null} onClick=${() => setSel(j.id)}>
           <${Ring} score=${j.score} />
           <div>

@@ -144,6 +144,7 @@ def main():
                 save(os.path.join(ROOT, "profile", "search.json"), cfg)
             import_note = f"Imported {os.path.basename(path)} ({data['_imported']['method']})"
             print(import_note)
+            args.requests_only = False  # a new resume means a new search, right away
         except Exception as e:
             import_note = f"Import failed: {e}"
             print(import_note)
