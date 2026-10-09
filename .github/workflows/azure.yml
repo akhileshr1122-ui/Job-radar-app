@@ -76,7 +76,32 @@ jobs:
           az extension add --name containerapp --upgrade --only-show-errors
           az containerapp job start -n jobradar-bulk -g "$RG" -o none && echo "Bulk search started."
 
+      - name: Connect your own domain
+        id: domain
+        if: vars.JR_DOMAIN != ''
+        env:
+          DOMAIN: ${{ vars.JR_DOMAIN }}
+          WEB: ${{ steps.infra.outputs.web_name }}
+        run: |
+          host=$(echo "${{ steps.infra.outputs.web_url }}" | sed 's#https://##')
+          if az staticwebapp hostname show -n "$WEB" -g "$RG" --hostname "$DOMAIN" -o none 2>/dev/null; then
+            echo "status=$(az staticwebapp hostname show -n "$WEB" -g "$RG" --hostname "$DOMAIN" --query status -o tsv)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if az staticwebapp hostname set -n "$WEB" -g "$RG" --hostname "$DOMAIN" --no-wait -o none; then
+            echo "status=Validating" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=WaitingForDNS" >> "$GITHUB_OUTPUT"
+            echo "::warning::Azure couldn't see the DNS record for $DOMAIN yet. Add a CNAME record: $DOMAIN -> $host, wait 10-30 minutes, then run this workflow again."
+          fi
+
       - name: Done
         run: |
-          echo "### Job Radar is live: ${{ steps.infra.outputs.web_url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Sign in with ${{ vars.JR_ADMIN_USERS }} and invite friends from Settings." >> "$GITHUB_STEP_SUMMARY"
+          host=$(echo "${{ steps.infra.outputs.web_url }}" | sed 's#https://##')
+          {
+            echo "### Job Radar is live: ${{ steps.infra.outputs.web_url }}"
+            echo "Sign in with ${{ vars.JR_ADMIN_USERS }} and invite friends from Settings."
+            echo ""
+            echo "**Your own domain:** at your domain provider add a **CNAME** record pointing to \`$host\`, then set the repo variable \`JR_DOMAIN\` (e.g. \`jobs.ladioro.com\`) and run this workflow again."
+            if [ -n "${{ vars.JR_DOMAIN }}" ]; then echo ""; echo "Domain **${{ vars.JR_DOMAIN }}**: ${{ steps.domain.outputs.status }} (HTTPS certificate is issued automatically, usually within 15 minutes)."; fi
+          } >> "$GITHUB_STEP_SUMMARY"

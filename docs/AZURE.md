@@ -45,6 +45,16 @@ From now on, every change to the web app, API or infra deploys by itself. The se
 2. In **Settings**, use **Bring my data over** to copy your existing Job Radar (profile, tracker, jobs, resumes), or just upload your resume.
 3. Under **Invite list**, add each friend's email (Microsoft) or GitHub username, then send them the link.
 
+### 6. Use your own domain (optional)
+1. Look at the finished deploy's summary. It shows your site's Azure address, like `jobradar-web-abc123.azurestaticapps.net`.
+2. At the company where you bought your domain, open its **DNS settings** and add a record:
+   - **Type:** CNAME
+   - **Name / Host:** `jobs` (for `jobs.ladioro.com`)
+   - **Value / Points to:** the Azure address from step 1, without `https://`
+   - **TTL:** the default, or 1 hour
+3. In GitHub → **Settings → Secrets and variables → Actions → Variables**, add `JR_DOMAIN` = `jobs.ladioro.com`.
+4. Wait 10–30 minutes, then **Actions → Deploy to Azure → Run workflow**. Azure checks the record and issues a free HTTPS certificate, usually within 15 minutes. Sign-in works the same on the new address.
+
 ---
 
 ## Day to day
