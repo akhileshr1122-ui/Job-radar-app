@@ -7,6 +7,8 @@ Usage:
   python engine/run.py --fixtures F    # offline test using a JSON list of jobs
   python engine/run.py --no-claude     # skip the Anthropic API even if a key exists
   python engine/run.py --requests-only # only handle app requests (add job / interview prep), no board search
+  python engine/run.py --root DIR --pool pool.json [--user-fetch]
+                                       # hosted (Azure) mode: one person's folder, jobs from the shared bulk pool
 """
 import argparse
 import glob
@@ -27,11 +29,20 @@ import importer  # noqa: E402
 from tailor import ai_available, all_skills, interview_prep, keyword_tailor, tailor  # noqa: E402
 from util import classify_location, geocache, geocode, job_id, load_geocache, norm, now_iso  # noqa: E402
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.path.join(ROOT, "data")
-RES_DIR = os.path.join(DATA, "resumes")
-PREP_DIR = os.path.join(DATA, "prep")
-REQ_DIR = os.path.join(ROOT, "requests")
+ROOT = DATA = RES_DIR = PREP_DIR = REQ_DIR = ""
+
+
+def set_root(root):
+    """Everything for one person lives under one folder: profile/, user/, data/, requests/, uploads/."""
+    global ROOT, DATA, RES_DIR, PREP_DIR, REQ_DIR
+    ROOT = os.path.abspath(root)
+    DATA = os.path.join(ROOT, "data")
+    RES_DIR = os.path.join(DATA, "resumes")
+    PREP_DIR = os.path.join(DATA, "prep")
+    REQ_DIR = os.path.join(ROOT, "requests")
+
+
+set_root(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TRACKED = {"saved", "applied", "interview", "offer", "rejected"}
 
 LEGAL = r"\b(inc|ltd|llc|ulc|corp|corporation|co|company|limited|lp|gmbh|plc|canada|usa|us|com|ca)\b"
@@ -118,14 +129,29 @@ def handle_add_requests(reqs, cfg):
     return out
 
 
-def main():
+def base_job(resume):
+    """A neutral 'job' for the standard resume: the person's own headline and top skills."""
+    title = (resume.get("headlines") or {}).get("main") or (resume.get("experience") or [{}])[0].get("title", "")
+    return {"title": title, "company": "", "description": " ".join(all_skills(resume)[:25])}
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--fixtures")
     ap.add_argument("--no-claude", action="store_true")
     ap.add_argument("--requests-only", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--root", help="this person's folder (default: the repo)")
+    ap.add_argument("--pool", help="shared bulk-fetched postings (JSON: {jobs, report}) used instead of searching")
+    ap.add_argument("--user-fetch", action="store_true", help="with --pool: also run this person's own query searches")
+    args = ap.parse_args(argv)
+    if args.root:
+        set_root(args.root)
 
     cfg = load(os.path.join(ROOT, "profile", "search.json"), None)
+    if cfg is None:  # brand-new person: start from the generic settings that ship with Job Radar
+        cfg = load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profile", "search.json"), {})
+        cfg.setdefault("_setup", True)
+        save(os.path.join(ROOT, "profile", "search.json"), cfg)
     req_files = sorted(glob.glob(os.path.join(REQ_DIR, "*.json")))
     reqs = [dict(load(f, {}), _file=f) for f in req_files]
 
@@ -166,6 +192,30 @@ def main():
         print("no resume yet – nothing to search")
         return
 
+    # ---- data brought over from a GitHub Job Radar (hosted mode): jobs list + tailored resumes, rendered here
+    imp_dir = os.path.join(DATA, "imported")
+    if any(r.get("type") == "import_github" for r in reqs) and os.path.isdir(imp_dir):
+        n = 0
+        os.makedirs(RES_DIR, exist_ok=True)
+        for fn in sorted(os.listdir(imp_dir)):
+            src = os.path.join(imp_dir, fn)
+            if fn == "jobs.json":
+                os.replace(src, os.path.join(DATA, "jobs.json"))
+                continue
+            t = load(src, None)
+            os.remove(src)
+            if not isinstance(t, dict):
+                continue
+            stem = os.path.join(RES_DIR, fn[:-5])
+            try:
+                render.to_pdf(t, resume, stem + ".pdf")
+                render.to_docx(t, resume, stem + ".docx")
+                save(stem + ".json", t)
+                n += 1
+            except Exception as e:
+                print(f"  imported resume {fn} failed: {e!r}")
+        print(f"brought over {n} tailored resumes from GitHub")
+
     # ---- settings that adapt to any profile
     locs = cfg.setdefault("locations", {})
     if not locs.get("search_locations") and resume.get("contact", {}).get("location"):
@@ -197,6 +247,13 @@ def main():
     raw = []
     if args.fixtures:
         raw, report = load(args.fixtures, []), {"fixtures": "used"}
+    elif args.pool and not args.requests_only:
+        pool = load(args.pool, {"jobs": []})
+        raw, report = [dict(j) for j in pool.get("jobs", [])], dict(pool.get("report", {}))
+        if args.user_fetch:
+            mine, my_report = sources.fetch_user(cfg, run_state)
+            raw += mine
+            report.update(my_report)
     elif not args.requests_only:
         raw, report = sources.fetch_all(cfg, cache, run_state)
     print(f"fetched {len(raw)} raw postings")
@@ -371,8 +428,7 @@ def main():
 
     # ---- base resume (default selection) always available
     if profile_hash != run_state.get("base_hash") or not os.path.exists(os.path.join(RES_DIR, "base.json")):
-        base = keyword_tailor({"title": "E-commerce Manager", "company": "",
-                               "description": "amazon shopify marketplace ecommerce automation analytics finance accounting"}, resume, cfg)
+        base = keyword_tailor(base_job(resume), resume, cfg)
         save(os.path.join(RES_DIR, "base.json"), base)
         try:
             render.to_pdf(base, resume, os.path.join(RES_DIR, "base.pdf"))

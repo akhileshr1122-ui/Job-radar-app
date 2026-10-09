@@ -610,7 +610,23 @@ def source_on(cfg, name):
     return cfg.get("sources", {}).get(name, True) is not False
 
 
-def fetch_all(cfg, cache, state):
+# Sources that don't depend on the person's search words. In hosted (bulk) mode they run once for everybody.
+SHARED_SOURCES = [remoteok, weworkremotely, workingnomads, workday]
+
+
+def _run_sources(fns, cfg, report, jobs):
+    for fn in fns:
+        if not source_on(cfg, fn.__name__):
+            report[fn.__name__] = "off"
+            continue
+        try:
+            jobs.extend(fn(cfg, report))
+        except Exception as e:  # never let one source kill the run
+            report[fn.__name__] = f"error: {e!r}"[:200]
+
+
+def fetch_user(cfg, state):
+    """Searches driven by one person's job titles and places."""
     report, jobs = {}, []
     try:
         if source_on(cfg, "jsearch"):
@@ -619,14 +635,14 @@ def fetch_all(cfg, cache, state):
             report["jsearch"] = "off"
     except Exception as e:
         report["jsearch"] = f"error: {e!r}"[:200]
-    for fn in BOARD_SOURCES:
-        if not source_on(cfg, fn.__name__):
-            report[fn.__name__] = "off"
-            continue
-        try:
-            jobs.extend(fn(cfg, report))
-        except Exception as e:  # never let one source kill the run
-            report[fn.__name__] = f"error: {e!r}"[:200]
+    _run_sources([f for f in BOARD_SOURCES if f not in SHARED_SOURCES], cfg, report, jobs)
+    return jobs, report
+
+
+def fetch_shared(cfg, cache):
+    """Company career boards and whole-site feeds: the same for everybody."""
+    report, jobs = {}, []
+    _run_sources(SHARED_SOURCES, cfg, report, jobs)
     try:
         if source_on(cfg, "company_boards"):
             jobs.extend(ats_boards(cfg, cache, report))
@@ -635,3 +651,10 @@ def fetch_all(cfg, cache, state):
     except Exception as e:
         report["ats"] = f"error: {e!r}"[:200]
     return jobs, report
+
+
+def fetch_all(cfg, cache, state):
+    jobs, report = fetch_user(cfg, state)
+    more, r2 = fetch_shared(cfg, cache)
+    report.update(r2)
+    return jobs + more, report

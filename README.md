@@ -12,6 +12,9 @@ Your own job search assistant. It finds jobs that fit your resume across Canada 
 
 The search runs every 4 hours on GitHub's free Actions minutes.
 
+## Hosted for a group (Azure)
+Rather run one invite-only Job Radar site for your friends, with Microsoft/GitHub sign-in, one bulk search every 4 hours for everybody, and no GitHub accounts needed? See **[docs/AZURE.md](docs/AZURE.md)**.
+
 ## Optional upgrades (secrets in your copy: Settings → Secrets and variables → Actions)
 | Secret | What it adds |
 |---|---|

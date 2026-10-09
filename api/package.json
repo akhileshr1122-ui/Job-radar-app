@@ -1,0 +1,10 @@
+{
+  "name": "job-radar-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Job Radar hosted API: sign-in, invite list, each person's files, run requests",
+  "dependencies": {
+    "@azure/storage-blob": "^12.24.0",
+    "@azure/storage-queue": "^12.23.0"
+  }
+}

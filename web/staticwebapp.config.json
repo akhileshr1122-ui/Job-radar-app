@@ -1,0 +1,18 @@
+{
+  "routes": [
+    { "route": "/.auth/login/twitter", "statusCode": 404 },
+    { "route": "/.auth/login/google", "statusCode": 404 },
+    { "route": "/.auth/login/facebook", "statusCode": 404 },
+    { "route": "/sw.js", "headers": { "Cache-Control": "no-cache" } },
+    { "route": "/*.js", "headers": { "Cache-Control": "no-cache" } },
+    { "route": "/*.css", "headers": { "Cache-Control": "no-cache" } }
+  ],
+  "navigationFallback": { "rewrite": "/index.html", "exclude": ["/api/*", "/.auth/*", "/*.{js,css,svg,png,json,webmanifest,ico}"] },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "X-Frame-Options": "DENY"
+  },
+  "mimeTypes": { ".webmanifest": "application/manifest+json" },
+  "platform": { "apiRuntime": "node:20" }
+}

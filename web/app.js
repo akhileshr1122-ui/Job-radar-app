@@ -1,5 +1,5 @@
 import { html, render, useState, useEffect, useMemo, useRef, useCallback } from "./vendor/preact-htm.js";
-import * as gh from "./gh.js";
+import gh from "./backend.js";
 import { resumePdf, fileName } from "./pdf.js";
 import { BOARD_GROUPS } from "./boards.js";
 
@@ -92,6 +92,7 @@ function App() {
     });
   }, []);
 
+  if (!ready && gh.mode === "azure") return html`<${SignIn} />`;
   if (!ready) return html`<${Setup} onDone=${() => { setReady(true); setRoute("jobs"); }} say=${say} />
     ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}`;
 
@@ -118,6 +119,7 @@ function App() {
   else if (route === "boards") main = html`<${Boards} ...${ctx} />`;
   else if (route === "profile") main = html`<${ProfileEditor} ...${ctx} />`;
   else if (route === "search") main = html`<${SearchEditor} ...${ctx} />`;
+  else if (gh.mode === "azure") main = html`<${HostedSettings} ...${ctx} />`;
   else main = html`<${Settings} ...${ctx} onDisconnect=${() => { gh.forget(); setReady(false); }} />`;
 
   const showList = route === "jobs" && !needsResume;
@@ -129,7 +131,7 @@ function App() {
         <div class="sep"></div>
         <button class="nav" onClick=${() => setAdding(true)}>Add a job</button>
         <button class="nav" onClick=${refresh}>${loading ? "Refreshing…" : "Refresh"}</button>
-        <div class="foot">${gh.conn.owner}/${gh.conn.repo}</div>
+        <div class="foot">${gh.mode === "azure" ? gh.me?.user : `${gh.conn.owner}/${gh.conn.repo}`}</div>
       </nav>
       ${showList ? html`<${JobList} ...${ctx} sel=${sel} counts=${counts} onAdd=${() => setAdding(true)} />` : null}
       <main class=${"mainpane" + (route === "jobs" ? " for-jobs" : "")}>${main}</main>
@@ -235,6 +237,7 @@ function Onboard({ resume, say, refresh, file }) {
         <input type="file" accept=".pdf,.docx,.txt" onChange=${upload} disabled=${busy} />
         <p class="hint">${busy ? "Uploading…" : "PDF or Word. The file is deleted after it's read."}</p>`}
     </div>
+    ${gh.mode === "azure" && !sent ? html`<${ImportGitHub} say=${say} onDone=${() => setSent(true)} />` : null}
   </div>`;
 }
 
@@ -802,7 +805,7 @@ function Cmd({ text, say }) {
     <button class="btn small" onClick=${async () => say(await copy(text) ? "Copied" : "Couldn't copy, select the text instead")}>Copy</button></div>`;
 }
 
-function AiSetup({ repoUrl, say }) {
+function AiSetup({ repoUrl, say, hosted }) {
   const [os, setOs] = useState(guessOs());
   const o = AI_OS[os];
   return html`<div class="aisetup">
@@ -815,9 +818,11 @@ function AiSetup({ repoUrl, say }) {
         <span class="hint">You should see a version number.</span></li>
       <li><b>Get your token.</b><${Cmd} text="claude setup-token" say=${say} />
         <span class="hint">A browser opens: sign in with your Claude Pro/Max account and approve. Back in the terminal, copy the whole token that starts with <code>sk-ant-oat</code>${os === "win" ? " (select it, then right-click to copy)" : ""}.</span></li>
+      ${hosted ? html`<li><b>Paste it in the box below</b> and click <b>Save token</b>. It's stored on the server for your resumes only and never shown again.</li>
+        <li><b>Done.</b> Your next resumes are written by AI. Click <b>Search now</b> above to start right away.</li>` : html`
       <li><b>Save it in your Job Radar.</b> Open <a href=${repoUrl + "/settings/secrets/actions/new"} target="_blank" rel="noopener">your repo's new secret page</a>, set the name to
         <${Cmd} text="CLAUDE_CODE_OAUTH_TOKEN" say=${say} /> paste the token as the secret and click <b>Add secret</b>.</li>
-      <li><b>Turn it on.</b> Click <b>Run a search now</b> above. This page says "On" after the run finishes.</li>
+      <li><b>Turn it on.</b> Click <b>Run a search now</b> above. This page says "On" after the run finishes.</li>`}
     </ol>
     <details class="trouble"><summary>Didn't work? Try these</summary>
       <ul class="reasons">
@@ -826,7 +831,7 @@ function AiSetup({ repoUrl, say }) {
         ${os === "win" ? html`<li><b>Prompt shows ${"C:\\WINDOWS\\system32"}:</b> that's an administrator window. Close it and open PowerShell normally.</li>
           <li><b>"running scripts is disabled":</b> run <${Cmd} text="Set-ExecutionPolicy -Scope CurrentUser RemoteSigned" say=${say} /> then try the install again.</li>` : null}
         <li><b>Browser didn't open:</b> the terminal shows a link. Copy it into your browser, approve, and paste the code back if it asks.</li>
-        <li><b>Still "Off" after a search:</b> check the secret name is exactly <code>CLAUDE_CODE_OAUTH_TOKEN</code> and the token has no spaces at the start or end. Tokens last about a year; run <code>claude setup-token</code> again for a new one.</li>
+        <li><b>Still "Off" after a search:</b> ${hosted ? "paste the token again, making sure you copied all of it" : html`check the secret name is exactly <code>CLAUDE_CODE_OAUTH_TOKEN</code> and the token has no spaces at the start or end`}. Tokens last about a year; run <code>claude setup-token</code> again for a new one.</li>
         <li>Full guide: <a href="https://code.claude.com/docs/en/setup" target="_blank" rel="noopener">Claude Code setup</a>.</li>
       </ul></details>
   </div>`;
@@ -916,6 +921,148 @@ function Settings({ report, say, onDisconnect, file }) {
     <div class="card"><h3>Connection</h3><p>${gh.conn.owner}/${gh.conn.repo}</p>
       <div class="row"><button class="btn" onClick=${() => { const t = document.documentElement.dataset.theme; document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; }}>Switch light / dark</button>
       <button class="btn" onClick=${onDisconnect}>Disconnect this browser</button></div></div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ hosted (Azure) mode: sign-in, settings, admin
+
+function SignIn() {
+  const me = gh.me || {};
+  return html`<div class="setup">
+    <img src="icon.svg" width="52" height="52" alt="" />
+    <h1>Job Radar finds jobs that fit your resume and writes a tailored version for each one.</h1>
+    ${!me.signedIn ? html`
+      <p class="hint">This Job Radar is invite-only. Sign in with the account your invite was sent to.</p>
+      <div class="card">
+        <h3>Sign in</h3>
+        <div class="row">
+          <button class="btn primary" onClick=${() => gh.signIn("aad")}>Sign in with Microsoft</button>
+          <button class="btn" onClick=${() => gh.signIn("github")}>Sign in with GitHub</button>
+        </div>
+        <p class="hint">Use Gmail or another email? Sign in with Microsoft and choose "Create one!" to make a free Microsoft account with that same email.</p>
+      </div>` : html`
+      <div class="card">
+        <h3>You're not on the invite list yet</h3>
+        <p>You're signed in as <b>${me.user}</b>${me.provider === "github" ? " (GitHub)" : ""}. Send exactly that to the person who invited you so they can add you, then reload this page.</p>
+        <div class="row"><button class="btn" onClick=${async () => { await copy(me.user); }}>Copy ${me.user}</button>
+          <button class="btn" onClick=${() => location.reload()}>Reload</button>
+          <button class="btn" onClick=${gh.forget}>Sign out</button></div>
+      </div>`}
+  </div>`;
+}
+
+function ImportGitHub({ say, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState({ owner: "", repo: "job-radar", token: "" });
+  const [busy, setBusy] = useState("");
+  async function go() {
+    setBusy("Starting…");
+    try {
+      const r = await gh.importFromGitHub(v, setBusy);
+      say(`Brought over your profile, tracker and ${r.jobs} jobs. Resumes appear in about 3–5 minutes.`);
+      onDone?.();
+    } catch (e) { say(e.message); }
+    setBusy("");
+  }
+  const set = (k) => (e) => setV({ ...v, [k]: e.target.value.trim() });
+  return html`<div class="card"><h3>Already using Job Radar on GitHub?</h3>
+    ${!open ? html`<p class="hint">Bring your profile, search settings, tracker and tailored resumes over instead of uploading again.</p>
+      <button class="btn" onClick=${() => setOpen(true)}>Bring my data over</button>` : html`
+      <ol class="steps">
+        <li>Use the same GitHub token as your Job Radar app (it needs Contents: Read). Make a new one at <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens</a> if you don't have it.</li>
+        <li>Fill in your GitHub account and repo name, then click <b>Copy my data</b>. The token is only used in this browser and isn't saved.</li>
+      </ol>
+      <div class="field"><label for="io">GitHub account</label><input id="io" class="input" value=${v.owner} onInput=${set("owner")} /></div>
+      <div class="field"><label for="ir">Repository</label><input id="ir" class="input" value=${v.repo} onInput=${set("repo")} /></div>
+      <div class="field"><label for="it">GitHub token</label><input id="it" class="input" type="password" autocomplete="off" value=${v.token} onInput=${set("token")} /></div>
+      <div class="row"><button class="btn primary" disabled=${!!busy || !v.owner || !v.token} onClick=${go}>${busy || "Copy my data"}</button></div>`}
+  </div>`;
+}
+
+const ago = (t) => (age({ posted: t }) === "now" ? "just now" : age({ posted: t }) + " ago");
+
+function AdminPanel({ say }) {
+  const [d, setD] = useState(null);
+  const [add, setAdd] = useState("");
+  const [note, setNote] = useState("");
+  const load = () => gh.admin().then(setD).catch((e) => say(e.message));
+  useEffect(() => { load(); }, []);
+  async function change(body) {
+    try { setD(await gh.admin(body)); if (body.add) { setAdd(""); setNote(""); say(`${body.add} can sign in now.`); } } catch (e) { say(e.message); }
+  }
+  const nameOf = (u) => u.name || u.id;
+  return html`<div class="card"><h3>Invite list (only you see this)</h3>
+    <p class="hint">Add the email a friend signs in with (Microsoft) or their GitHub username. Then send them this site's link.</p>
+    <div class="row">
+      <input class="input" style="flex:2;min-width:180px" placeholder="friend@example.com or github-username" value=${add} onInput=${(e) => setAdd(e.target.value)} />
+      <input class="input" style="flex:1;min-width:110px" placeholder="Name (optional)" value=${note} onInput=${(e) => setNote(e.target.value)} />
+      <button class="btn primary" disabled=${!add.trim()} onClick=${() => change({ add: add.trim(), note })}>Invite</button>
+    </div>
+    ${d ? html`
+      <ul class="reasons">${d.people.length === 0 ? html`<li class="hint">Nobody invited yet.</li>` : d.people.map((p) => html`<li>
+        <b>${p.id}</b>${p.note ? ` · ${p.note}` : ""} <button class="btn small" onClick=${() => change({ remove: p.id })}>Remove</button></li>`)}</ul>
+      <h3 style="margin-top:14px">People using it</h3>
+      <div class="kv">${d.users.map((u) => html`<span>${nameOf(u)}</span><span class="hint">${u.jobs != null ? `${u.jobs} jobs` : "no resume yet"}${u.run?.state ? ` · last run ${u.run.state}${u.run.ok === false ? " (failed)" : ""}` : ""}${u.last_seen ? ` · seen ${ago(u.last_seen)}` : ""}</span>`)}</div>
+      <p class="hint">Shared job pool updated ${d.pool_updated ? ago(d.pool_updated) : "not yet (the first bulk search runs within 4 hours)"}.</p>` : html`<p class="hint">Loading…</p>`}
+  </div>`;
+}
+
+function HostedSettings({ report, say, file }) {
+  const [run, setRun] = useState(null);
+  const [sec, setSec] = useState(null);
+  const [tok, setTok] = useState("");
+  const [key, setKey] = useState("");
+  useEffect(() => { gh.lastRun().then(setRun); gh.secrets().then(setSec).catch(() => {}); }, []);
+  async function searchNow() {
+    try { await gh.runSearch(); say("Search started. New jobs arrive in about 5–10 minutes."); setRun(await gh.lastRun()); } catch (e) { say(e.message); }
+  }
+  async function saveSecret(body, msg) {
+    try { setSec(await gh.secrets(body)); setTok(""); setKey(""); say(msg); } catch (e) { say(e.message); }
+  }
+  const src = report?.sources || {};
+  const runText = !run ? "No search has run for you yet." : run.state === "queued" ? "Waiting to start (usually under 2 minutes)."
+    : run.state === "running" ? "Running now." : `Last run ${age({ posted: run.updated_at }) === "now" ? "just now" : age({ posted: run.updated_at }) + " ago"}${run.conclusion === "failure" ? ` – failed: ${run.note || "unknown error"}` : ""}.`;
+  return html`<div class="page form">
+    <h2>Settings</h2>
+    <div class="card"><h3>Search</h3>
+      <p>${runText} Everyone's jobs are pulled together every 4 hours, then matched to each person's resume.</p>
+      <div class="row"><button class="btn primary" onClick=${searchNow}>Search now</button>
+        <button class="btn" onClick=${async () => setRun(await gh.lastRun())}>Check status</button></div></div>
+
+    <div class="card"><h3>AI resumes and interview prep</h3>
+      <p>${sec?.claude_token ? "On, using your Claude plan." : sec?.anthropic_key ? "On, using your Anthropic API key." : "Off: resumes are tailored by keyword matching."}
+        ${report?.ai_used_today != null ? ` ${report.ai_used_today} AI resumes today.` : ""}</p>
+      <${AiSetup} say=${say} hosted=${true} />
+      <div class="field"><label for="ct">Claude token (starts with sk-ant-oat)</label>
+        <input id="ct" class="input" type="password" autocomplete="off" value=${tok} onInput=${(e) => setTok(e.target.value.trim())} /></div>
+      <div class="row"><button class="btn primary" disabled=${!tok} onClick=${() => saveSecret({ claude_token: tok }, "Saved. Your next resumes are written by AI.")}>Save token</button>
+        ${sec?.claude_token ? html`<button class="btn" onClick=${() => saveSecret({ claude_token: "" }, "Token removed.")}>Remove my token</button>` : null}</div>
+      <details class="trouble"><summary>Use an Anthropic API key instead (pay per use)</summary>
+        <div class="field"><label for="ak">Anthropic API key (starts with sk-ant-api)</label>
+          <input id="ak" class="input" type="password" autocomplete="off" value=${key} onInput=${(e) => setKey(e.target.value.trim())} /></div>
+        <div class="row"><button class="btn" disabled=${!key} onClick=${() => saveSecret({ anthropic_key: key }, "API key saved.")}>Save key</button>
+          ${sec?.anthropic_key ? html`<button class="btn" onClick=${() => saveSecret({ anthropic_key: "" }, "API key removed.")}>Remove key</button>` : null}</div>
+      </details>
+      <p class="hint">Your token is only used for your own resumes and is never shown to anyone, including the admin's screens.</p></div>
+
+    ${report ? html`<div class="card"><h3>Last search</h3>
+      <p>${report.raw} postings checked, ${report.unique} matched you, ${report.new} new, ${report.tailored_this_run} resumes written.</p>
+      <div class="kv">${Object.entries(src).filter(([, v]) => typeof v !== "object").map(([k, v]) => html`<span>${k}</span><span class="hint">${String(v)}</span>`)}</div></div>` : null}
+
+    ${gh.me?.admin ? html`<${AdminPanel} say=${say} />` : null}
+
+    <${ImportGitHub} say=${say} />
+
+    <div class="card"><h3>On your phone</h3>
+      <ol class="steps">
+        <li>Open this site on your phone and sign in.</li>
+        <li><b>iPhone:</b> tap Share → <b>Add to Home Screen</b>. <b>Android:</b> tap ⋮ → <b>Add to Home screen</b> (or Install app).</li>
+        <li>Job Radar now opens like an app.</li>
+      </ol></div>
+
+    <div class="card"><h3>Account</h3><p>Signed in as <b>${gh.me?.user}</b>${gh.me?.provider === "github" ? " (GitHub)" : " (Microsoft)"}.</p>
+      <div class="row"><button class="btn" onClick=${() => { const t = document.documentElement.dataset.theme; document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; }}>Switch light / dark</button>
+      <button class="btn" onClick=${gh.forget}>Sign out</button></div></div>
   </div>`;
 }
 

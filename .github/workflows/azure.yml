@@ -1,0 +1,82 @@
+name: Deploy to Azure
+
+# Hosted Job Radar for an invite-only group. Needs one secret, AZURE_CREDENTIALS (see docs/AZURE.md),
+# and the variable JR_ADMIN_USERS (your sign-in email). Job-source keys are optional secrets.
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "api/**", "infra/**", ".github/workflows/azure.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-deploy
+  cancel-in-progress: false
+
+env:
+  RG: ${{ vars.JR_RESOURCE_GROUP || 'job-radar' }}
+
+jobs:
+  deploy:
+    if: github.repository == 'akhileshr1122-ui/Job-radar-app'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check setup
+        env:
+          CREDS: ${{ secrets.AZURE_CREDENTIALS }}
+          ADMINS: ${{ vars.JR_ADMIN_USERS }}
+        run: |
+          if [ -z "$CREDS" ]; then echo "::error::Add the AZURE_CREDENTIALS secret first (docs/AZURE.md, step 2)."; exit 1; fi
+          if [ -z "$ADMINS" ]; then echo "::error::Add the JR_ADMIN_USERS variable (your sign-in email) first (docs/AZURE.md, step 3)."; exit 1; fi
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create or update Azure resources
+        id: infra
+        env:
+          ADMINS: ${{ vars.JR_ADMIN_USERS }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+        run: |
+          out=$(az deployment group create -g "$RG" -n jobradar -f infra/main.bicep \
+            -p adminUsers="$ADMINS" adzunaAppId="$ADZUNA_APP_ID" adzunaAppKey="$ADZUNA_APP_KEY" \
+               joobleKey="$JOOBLE_KEY" rapidApiKey="$RAPIDAPI_KEY" \
+            --query properties.outputs -o json)
+          echo "web_name=$(echo "$out" | jq -r .webName.value)" >> "$GITHUB_OUTPUT"
+          echo "web_url=$(echo "$out" | jq -r .webUrl.value)" >> "$GITHUB_OUTPUT"
+
+      - name: Get the web app deploy key
+        id: key
+        run: |
+          k=$(az staticwebapp secrets list -n "${{ steps.infra.outputs.web_name }}" -g "$RG" --query properties.apiKey -o tsv)
+          echo "::add-mask::$k"
+          echo "token=$k" >> "$GITHUB_OUTPUT"
+
+      - name: Publish web app and API
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.key.outputs.token }}
+          action: upload
+          app_location: web
+          api_location: api
+          skip_app_build: true
+
+      - name: Start a first search
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          az extension add --name containerapp --upgrade --only-show-errors
+          az containerapp job start -n jobradar-bulk -g "$RG" -o none && echo "Bulk search started."
+
+      - name: Done
+        run: |
+          echo "### Job Radar is live: ${{ steps.infra.outputs.web_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Sign in with ${{ vars.JR_ADMIN_USERS }} and invite friends from Settings." >> "$GITHUB_STEP_SUMMARY"
