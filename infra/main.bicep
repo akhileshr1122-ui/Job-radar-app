@@ -83,7 +83,7 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   properties: {
     sku: { name: 'PerGB2018' }
     retentionInDays: 30
-    workspaceCapping: { dailyQuotaGb: json('0.2') }
+    workspaceCapping: { dailyQuotaGb: json('0.15') }
   }
 }
 
@@ -147,7 +147,7 @@ resource bulkJob 'Microsoft.App/jobs@2024-03-01' = {
         command: [ '/bin/bash', '-c' ]
         args: [ '${boot}bulk' ]
         env: runnerEnv
-        resources: { cpu: json('1.0'), memory: '2Gi' }
+        resources: { cpu: json('0.5'), memory: '1Gi' }
       } ]
     }
   }
@@ -187,7 +187,7 @@ resource queueJob 'Microsoft.App/jobs@2024-03-01' = {
         command: [ '/bin/bash', '-c' ]
         args: [ '${boot}queue' ]
         env: runnerEnv
-        resources: { cpu: json('1.0'), memory: '2Gi' }
+        resources: { cpu: json('0.5'), memory: '1Gi' }
       } ]
     }
   }
