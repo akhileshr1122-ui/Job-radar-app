@@ -57,6 +57,12 @@ From now on, every change to the web app, API or infra deploys by itself. The se
 
 ---
 
+## Plans and invites
+- People can ask for access themselves with the **Request an invite** form on the homepage. Requests show up on the **Admin** tab, where you approve them and pick their plan.
+- The plans and prices shown on the site are in `web/plans.js`. Edit the names, prices or feature lists there. To take payments online, paste a Stripe Payment Link into `paymentLink`. Until then, "Upgrade" sends you a request and you move the person to the new plan on the Admin tab.
+- The limits each plan enforces are in `api/jr/index.js` (`PLANS`) and `engine/azure_run.py` (`PLAN_LIMITS`).
+- **AI included in Plus and Pro:** add an Anthropic API key as the repository secret `SHARED_ANTHROPIC_API_KEY` and redeploy. Plus and Pro members without their own Claude token then get AI resumes on your key, billed per use to your Anthropic account. Don't use your personal Claude Pro or Max token for other people.
+
 ## Day to day
 
 | You want to… | Do this |

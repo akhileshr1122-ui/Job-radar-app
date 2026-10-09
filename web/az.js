@@ -18,7 +18,10 @@ export async function detect() {
 }
 export const connected = () => !!(me && me.signedIn && me.allowed);
 export const signIn = (provider) => { location.href = `/.auth/login/${provider}?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`; };
-export function forget() { location.href = "/.auth/logout?post_logout_redirect_uri=/"; }
+export function forget() {
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith("jr.")) localStorage.removeItem(k); } catch {}
+  location.href = "/.auth/logout?post_logout_redirect_uri=/";
+}
 export const saveConn = () => {};
 
 async function call(url, opts = {}) {
@@ -54,7 +57,7 @@ export async function request(type, fields) {
   await putText(`requests/${Date.now()}-${type}.json`, JSON.stringify({ type, ...fields }));
 }
 
-export async function runSearch() { await call(`${API}/run`, { method: "POST" }); }
+export async function runSearch() { return (await call(`${API}/run`, { method: "POST" })).json(); }
 
 /** Shaped like a GitHub Actions run so the Settings page can show it either way. */
 export async function lastRun() {
@@ -69,6 +72,13 @@ export async function lastRun() {
 export async function secrets(update) {
   const opts = update ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(update) } : {};
   return (await call(`${API}/secrets`, opts)).json();
+}
+
+export async function requestAccess(body) {
+  await call(`${API}/request-access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+export async function requestPlan(plan, note) {
+  await call(`${API}/plan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan, note }) });
 }
 
 export async function admin(update) {

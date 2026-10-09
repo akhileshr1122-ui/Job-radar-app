@@ -50,6 +50,27 @@ async function enqueue(uid, search = false) {
   if (cur.state !== "running") await writeJson(`users/${uid}/data/run_status.json`, { ...cur, state: "queued", queued: new Date().toISOString(), kind: search ? "search" : "quick" });
 }
 
+// Plans: what each tier allows. Prices and names shown on the site live in web/plans.js.
+const PLANS = {
+  free: { searchNowPerDay: 3 },
+  plus: { searchNowPerDay: 10 },
+  pro: { searchNowPerDay: 30 },
+};
+const planOf = (allow, who, isAdmin) => (isAdmin ? "pro" : (allow.people.find((x) => norm(x.id) === who)?.plan || "free"));
+
+async function requestsList() {
+  return (await readJson("config/requests.json", { items: [] })) || { items: [] };
+}
+async function addRequest(item) {
+  const r = await requestsList();
+  const key = `${item.kind}|${norm(item.email)}`;
+  r.items = r.items.filter((x) => `${x.kind}|${norm(x.email)}` !== key);
+  r.items.unshift({ ...item, at: new Date().toISOString() });
+  r.items = r.items.slice(0, 200);
+  await writeJson("config/requests.json", r);
+}
+const clean = (s, n) => String(s || "").replace(/[\u0000-\u001f<>]/g, " ").trim().slice(0, n);
+
 async function allowList() {
   return (await readJson("config/allow.json", { people: [] })) || { people: [] };
 }
@@ -79,15 +100,30 @@ async function handle(req) {
   const allow = await allowList();
   const allowed = isAdmin || (!!p && allow.people.some((x) => norm(x.id) === who));
 
+  if (rest === "request-access" && method === "POST") {
+    const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    const email = clean(b.email, 120);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) && !/^[A-Za-z0-9-]{1,39}$/.test(email)) return reply(400, { error: "Enter the email (or GitHub username) you'll sign in with." });
+    if (b.website) return reply(200, { ok: true }); // honeypot field: bots fill it, people don't see it
+    await addRequest({ kind: "access", email, name: clean(b.name, 80), note: clean(b.note, 400), plan: PLANS[b.plan] ? b.plan : "free" });
+    return reply(200, { ok: true });
+  }
+
   if (rest === "me") {
     if (!p) return reply(200, { signedIn: false });
     const uid = uidOf(p);
+    if (isAdmin && !allow.people.some((x) => norm(x.id) === who)) {
+      // keep admins on the invite list too, so they never get locked out while app settings reload during a deploy
+      allow.people.push({ id: who, note: "Admin", plan: "pro", added: new Date().toISOString() });
+      await writeJson("config/allow.json", allow);
+    }
     if (allowed) {
       const acct = await readJson(`users/${uid}/account.json`, null);
       const fresh = { name: p.userDetails, provider: p.identityProvider, first_seen: acct?.first_seen || new Date().toISOString(), last_seen: new Date().toISOString() };
       if (!acct || Date.now() - Date.parse(acct.last_seen || 0) > 3600e3) await writeJson(`users/${uid}/account.json`, fresh);
     }
-    return reply(200, { signedIn: true, allowed, admin: isAdmin, user: p.userDetails, provider: p.identityProvider, uid: allowed ? uid : undefined });
+    return reply(200, { signedIn: true, allowed, admin: isAdmin, user: p.userDetails, provider: p.identityProvider, uid: allowed ? uid : undefined,
+      plan: allowed ? planOf(allow, who, isAdmin) : undefined });
   }
   if (!p) return reply(401, { error: "Please sign in." });
   if (!allowed) return reply(403, { error: `${p.userDetails} isn't on the invite list yet. Ask the person who runs this Job Radar to add you.` });
@@ -123,7 +159,17 @@ async function handle(req) {
   }
 
   if (rest === "run") {
-    if (method === "POST") { await enqueue(uid, true); return reply(200, { ok: true }); }
+    if (method === "POST") {
+      const plan = planOf(allow, who, isAdmin);
+      const stats = (await readJson(home + "data/run_requests.json", {})) || {};
+      const day = new Date().toISOString().slice(0, 10);
+      const used = stats.day === day ? stats.count || 0 : 0;
+      const max = PLANS[plan].searchNowPerDay;
+      if (used >= max) return reply(429, { error: `You've used today's ${max} on-demand searches. Your next automatic search runs within 4 hours${plan === "free" ? ", or upgrade for more" : ""}.` });
+      await writeJson(home + "data/run_requests.json", { day, count: used + 1 });
+      await enqueue(uid, true);
+      return reply(200, { ok: true, left: max - used - 1 });
+    }
     return reply(200, (await readJson(home + "data/run_status.json", null)) || {});
   }
 
@@ -141,14 +187,28 @@ async function handle(req) {
     return reply(200, { claude_token: !!cur.claude_token, anthropic_key: !!cur.anthropic_key });
   }
 
+  if (rest === "plan" && method === "POST") {
+    const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    if (!PLANS[b.plan]) return reply(400, { error: "Unknown plan." });
+    await addRequest({ kind: "upgrade", email: p.userDetails, name: "", note: clean(b.note, 400), plan: b.plan });
+    return reply(200, { ok: true });
+  }
+
   if (rest.startsWith("admin/")) {
     if (!isAdmin) return reply(403, { error: "Only the admin can do that." });
     if (rest === "admin/allow" && method === "POST") {
       const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
-      const add = norm(b.add), remove = norm(b.remove);
-      if (add && !allow.people.some((x) => norm(x.id) === add)) allow.people.push({ id: add, note: String(b.note || "").slice(0, 80), added: new Date().toISOString() });
+      const add = norm(b.add), remove = norm(b.remove), setPlan = norm(b.setPlan), dismiss = norm(b.dismiss);
+      if (add && !allow.people.some((x) => norm(x.id) === add)) allow.people.push({ id: add, note: clean(b.note, 80), plan: PLANS[b.plan] ? b.plan : "free", added: new Date().toISOString() });
+      if (setPlan && PLANS[b.plan]) allow.people = allow.people.map((x) => (norm(x.id) === setPlan ? { ...x, plan: b.plan } : x));
       if (remove) allow.people = allow.people.filter((x) => norm(x.id) !== remove);
-      await writeJson("config/allow.json", allow);
+      if (add || setPlan || remove) await writeJson("config/allow.json", allow);
+      if (add || setPlan || dismiss) {
+        const r = await requestsList();
+        const gone = norm(add || setPlan || dismiss);
+        r.items = r.items.filter((x) => norm(x.email) !== gone || (dismiss && b.kind && x.kind !== b.kind));
+        await writeJson("config/requests.json", r);
+      }
     }
     if (rest === "admin/allow" || rest === "admin/users") {
       const users = [];
@@ -161,7 +221,7 @@ async function handle(req) {
         users.push({ id, name: acct?.name || id, provider: acct?.provider || "", last_seen: acct?.last_seen || "", run: st || {}, jobs: jobs?.count ?? null });
       }
       const pool = await box().getBlobClient("shared/pool.json").getProperties().catch(() => null);
-      return reply(200, { people: allow.people, admins: admins(), users, pool_updated: pool?.lastModified || null });
+      return reply(200, { people: allow.people, admins: admins(), users, requests: (await requestsList()).items, pool_updated: pool?.lastModified || null });
     }
   }
   return reply(404, { error: "Unknown request." });

@@ -160,14 +160,40 @@ def upload_user(uid, root, downloaded, since):
     return up, len(gone)
 
 
+# What each plan allows per person. Shown on the site in web/plans.js; keep the two in step.
+PLAN_LIMITS = {
+    "free": {"max_tailor_per_run": 10, "max_ai_per_day": 10, "shared_ai": False},
+    "plus": {"max_tailor_per_run": 25, "max_ai_per_day": 15, "shared_ai": True},
+    "pro": {"max_tailor_per_run": 40, "max_ai_per_day": 40, "shared_ai": True},
+}
+
+
+def plan_of(uid):
+    acct = get_json(f"users/{uid}/account.json", {}) or {}
+    who = (acct.get("name") or "").strip().lower()
+    admins = [a.strip().lower() for a in os.environ.get("ADMIN_USERS", "").replace(";", ",").split(",") if a.strip()]
+    if who and who in admins:
+        return "pro"
+    for x in (get_json("config/allow.json", {}) or {}).get("people", []):
+        if (x.get("id") or "").strip().lower() == who:
+            return x.get("plan") or "free"
+    return "free"
+
+
 def user_env(uid):
     sec = get_json(f"users/{uid}/secrets.json", {}) or {}
-    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "STORAGE_CONNECTION")}
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "STORAGE_CONNECTION", "SHARED_ANTHROPIC_API_KEY")}
+    plan = plan_of(uid)
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    env["JR_LIMITS"] = json.dumps({k: v for k, v in limits.items() if k.startswith("max_")})
+    env["JR_PLAN"] = plan
     if sec.get("anthropic_key"):
         env["ANTHROPIC_API_KEY"] = sec["anthropic_key"]
     if sec.get("claude_token"):
         env["CLAUDE_CODE_OAUTH_TOKEN"] = sec["claude_token"]
         ensure_claude_cli(env)
+    elif not sec.get("anthropic_key") and limits["shared_ai"] and os.environ.get("SHARED_ANTHROPIC_API_KEY"):
+        env["ANTHROPIC_API_KEY"] = os.environ["SHARED_ANTHROPIC_API_KEY"]  # AI included in the plan
     return env
 
 

@@ -46,10 +46,11 @@ jobs:
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          SHARED_ANTHROPIC_API_KEY: ${{ secrets.SHARED_ANTHROPIC_API_KEY }}
         run: |
           out=$(az deployment group create -g "$RG" -n jobradar -f infra/main.bicep \
             -p adminUsers="$ADMINS" adzunaAppId="$ADZUNA_APP_ID" adzunaAppKey="$ADZUNA_APP_KEY" \
-               joobleKey="$JOOBLE_KEY" rapidApiKey="$RAPIDAPI_KEY" \
+               joobleKey="$JOOBLE_KEY" rapidApiKey="$RAPIDAPI_KEY" sharedAnthropicKey="$SHARED_ANTHROPIC_API_KEY" \
             --query properties.outputs -o json)
           echo "web_name=$(echo "$out" | jq -r .webName.value)" >> "$GITHUB_OUTPUT"
           echo "web_url=$(echo "$out" | jq -r .webUrl.value)" >> "$GITHUB_OUTPUT"

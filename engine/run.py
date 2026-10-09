@@ -148,6 +148,7 @@ def main(argv=None):
         set_root(args.root)
 
     cfg = load(os.path.join(ROOT, "profile", "search.json"), None)
+    limits = json.loads(os.environ.get("JR_LIMITS") or "{}")  # hosted plans cap these per person
     if cfg is None:  # brand-new person: start from the generic settings that ship with Job Radar
         cfg = load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profile", "search.json"), {})
         cfg.setdefault("_setup", True)
@@ -191,6 +192,9 @@ def main(argv=None):
                 pass
         print("no resume yet – nothing to search")
         return
+
+    for k, v in limits.items():
+        cfg[k] = min(cfg.get(k, v), v)
 
     # ---- data brought over from a GitHub Job Radar (hosted mode): jobs list + tailored resumes, rendered here
     imp_dir = os.path.join(DATA, "imported")

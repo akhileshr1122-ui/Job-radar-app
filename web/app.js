@@ -2,40 +2,17 @@ import { html, render, useState, useEffect, useMemo, useRef, useCallback } from 
 import gh from "./backend.js";
 import { resumePdf, fileName } from "./pdf.js";
 import { BOARD_GROUPS } from "./boards.js";
-
-// ------------------------------------------------------------------ helpers
-
-const PIPE = ["applied", "interview", "offer", "rejected"];
-const LABEL = { saved: "Saved", applied: "Applied", interview: "Interview", offer: "Offer", rejected: "Rejected", hidden: "Not interested" };
-const scoreColor = (s) => (s >= 80 ? "var(--good)" : s >= 65 ? "var(--blue)" : s >= 50 ? "var(--warn)" : "var(--ink-3)");
-const clone = (o) => JSON.parse(JSON.stringify(o));
-const lines = (s) => (s || "").split("\n").map((x) => x.replace(/^\s*[•\-*]\s*/, "").trim()).filter(Boolean);
-const commas = (s) => (s || "").split(/,(?![^(]*\))|\n/).map((x) => x.trim()).filter(Boolean);
-
-function age(job) {
-  const t = Date.parse(job.posted || job.first_seen || "");
-  if (!t) return "";
-  const h = (Date.now() - t) / 36e5;
-  return h < 1 ? "now" : h < 24 ? `${Math.floor(h)}h` : `${Math.floor(h / 24)}d`;
-}
-const ageHours = (job) => { const t = Date.parse(job.posted || ""); return t ? (Date.now() - t) / 36e5 : 1e9; };
-
-function store(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
-function restore(key, d) { try { return JSON.parse(localStorage.getItem(key) || "null") ?? d; } catch { return d; } }
-
-async function copy(text) {
-  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
-}
-
-function Ring({ score, big }) {
-  return html`<div class=${"ring" + (big ? " big" : "")} style=${`--p:${score};--c:${scoreColor(score)}`} aria-label=${`Match score ${score} of 100`}><span>${score}</span></div>`;
-}
+import { PIPE, LABEL, scoreColor, clone, lines, commas, age, ageHours, store, restore, copy, Ring, ago } from "./ui.js";
+import { Landing } from "./landing.js";
+import { Home, Tracker, Documents, Insights, PlanPage, AdminPage } from "./pages.js";
+import { planById } from "./plans.js";
 
 // ------------------------------------------------------------------ app
 
 function App() {
   const [ready, setReady] = useState(gh.connected());
-  const [route, setRoute] = useState(["jobs", "boards", "profile", "search", "settings"].includes(location.hash.slice(1)) ? location.hash.slice(1) : restore("jr.route", "jobs"));
+  const [route, setRouteRaw] = useState(routeFromHash() || restore("jr.route", "home"));
+  const [run, setRun] = useState(null);
   const [file, setFile] = useState(restore("jr.jobs", null));
   const [resume, setResume] = useState(restore("jr.resume", null));
   const [search, setSearch] = useState(null);
@@ -49,7 +26,16 @@ function App() {
   const saveTimer = useRef(null);
 
   const say = useCallback((msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? null : t)), 6000); }, []);
-  useEffect(() => store("jr.route", route), [route]);
+  useEffect(() => {
+    store("jr.route", route);
+    if (location.hash.slice(1) !== route) history.replaceState(null, "", "#" + route);
+  }, [route]);
+  useEffect(() => {
+    const on = () => { const r = routeFromHash(); if (r) { setRouteRaw(r); setSel(null); } };
+    addEventListener("hashchange", on);
+    return () => removeEventListener("hashchange", on);
+  }, []);
+  const setRoute = useCallback((r) => { setRouteRaw(r); if (r !== "jobs") setSel(null); scrollTo(0, 0); }, []);
 
   const refresh = useCallback(async () => {
     if (!gh.connected()) return;
@@ -92,7 +78,17 @@ function App() {
     });
   }, []);
 
-  if (!ready && gh.mode === "azure") return html`<${SignIn} />`;
+  const searchNow = useCallback(async () => {
+    try {
+      const r = await gh.runSearch();
+      say(`Search started. New jobs arrive in about ${gh.mode === "azure" ? "5–10" : "10–15"} minutes.${r?.left != null ? ` ${r.left} on-demand searches left today.` : ""}`);
+      gh.lastRun().then(setRun);
+    } catch (e) { say(e.message); }
+  }, [say]);
+  useEffect(() => { if (ready) gh.lastRun().then(setRun); }, [ready]);
+
+  if (!ready && gh.mode === "azure") return html`<${Landing} api=${gh} me=${gh.me} say=${say} />
+    ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}`;
   if (!ready) return html`<${Setup} onDone=${() => { setReady(true); setRoute("jobs"); }} say=${say} />
     ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}`;
 
@@ -102,46 +98,96 @@ function App() {
   const needsResume = !resume || !(resume.experience || []).length;
   const jobs = file?.jobs || [];
   const job = sel && jobs.find((j) => j.id === sel);
-  const ctx = { file, jobs, resume, search, report, base, statuses, setStatus, say, refresh, loading, setRoute, setSel, setResume, setSearch, title };
+  const openJob = (id) => { setSel(id); setRouteRaw("jobs"); scrollTo(0, 0); };
+  const ctx = { file, jobs, resume, search, report, base, statuses, setStatus, say, refresh, loading, setRoute, setSel, setResume, setSearch, title, openJob, run,
+    searchNow: gh.mode === "azure" ? searchNow : null };
 
   const counts = {
     inbox: jobs.filter((j) => !statuses[j.id]).length,
     saved: jobs.filter((j) => statuses[j.id]?.status === "saved").length,
     applied: jobs.filter((j) => PIPE.includes(statuses[j.id]?.status)).length,
   };
-
-  const nav = [["jobs", "Jobs", counts.inbox], ["boards", "Job boards"], ["profile", "My profile"], ["search", "Search preferences"], ["settings", "Settings"]];
-  const go = (r) => { setRoute(r); if (r !== "jobs") setSel(null); };
+  const tabs = [["home", "Home"], ["jobs", "Jobs", counts.inbox], ["tracker", "Tracker"], ["resumes", "Resumes"], ["insights", "Insights"],
+    ["boards", "Boards"], ["profile", "Profile"], ...(gh.mode === "azure" ? [["plan", "Plan"]] : []), ["settings", "Settings"],
+    ...(gh.me?.admin ? [["admin", "Admin"]] : [])];
+  const current = tabs.some(([r]) => r === route) || route === "search" ? route : "home";
 
   let main;
-  if (needsResume && route !== "settings") main = html`<${Onboard} ...${ctx} />`;
-  else if (route === "jobs") main = job ? html`<${Detail} key=${job.id} job=${job} ...${ctx} />` : html`<div class="page empty">Pick a job on the left to see why it matched, review your tailored resume and apply.</div>`;
-  else if (route === "boards") main = html`<${Boards} ...${ctx} />`;
-  else if (route === "profile") main = html`<${ProfileEditor} ...${ctx} />`;
-  else if (route === "search") main = html`<${SearchEditor} ...${ctx} />`;
+  if (needsResume && !["settings", "plan", "admin"].includes(current)) main = html`<${Onboard} ...${ctx} />`;
+  else if (current === "home") main = html`<${Home} ...${ctx} />`;
+  else if (current === "jobs") main = html`<div class=${"jobsview" + (job ? " has-detail" : "")}>
+      <${JobList} ...${ctx} sel=${sel} counts=${counts} onAdd=${() => setAdding(true)} />
+      <div class="detailpane">${job ? html`<${Detail} key=${job.id} job=${job} ...${ctx} />`
+        : html`<div class="page empty">Pick a job to see why it matched, review your tailored resume and apply.</div>`}</div>
+    </div>`;
+  else if (current === "tracker") main = html`<${Tracker} ...${ctx} />`;
+  else if (current === "resumes") main = html`<${Documents} ...${ctx} />`;
+  else if (current === "insights") main = html`<${Insights} ...${ctx} />`;
+  else if (current === "boards") main = html`<${Boards} ...${ctx} />`;
+  else if (current === "profile" || current === "search") main = html`<${ProfileTabs} sub=${current} ...${ctx} />`;
+  else if (current === "plan") main = html`<${PlanPage} say=${say} />`;
+  else if (current === "admin") main = html`<${AdminPage} say=${say} />`;
   else if (gh.mode === "azure") main = html`<${HostedSettings} ...${ctx} />`;
   else main = html`<${Settings} ...${ctx} onDisconnect=${() => { gh.forget(); setReady(false); }} />`;
 
-  const showList = route === "jobs" && !needsResume;
-  return html`
-    <div class=${"shell" + (job && route === "jobs" ? " has-detail" : "")} style=${showList ? "" : "grid-template-columns: 232px 1fr"}>
-      <nav class="rail" aria-label="Main">
-        <div class="brand"><img src="icon.svg" alt="" /><div><b>${title}</b><small>${file?.updated ? (age({ posted: file.updated }) === "now" ? "Searched just now" : "Searched " + age({ posted: file.updated }) + " ago") : "Your job search"}</small></div></div>
-        ${nav.map(([r, label, n]) => html`<button class="nav" aria-current=${route === r ? "page" : null} onClick=${() => go(r)}>${label}${n != null ? html`<span class="count">${n}</span>` : null}</button>`)}
-        <div class="sep"></div>
-        <button class="nav" onClick=${() => setAdding(true)}>Add a job</button>
-        <button class="nav" onClick=${refresh}>${loading ? "Refreshing…" : "Refresh"}</button>
-        <div class="foot">${gh.mode === "azure" ? gh.me?.user : `${gh.conn.owner}/${gh.conn.repo}`}</div>
+  const searched = file?.updated ? `Searched ${ago(file.updated)}` : "Your job search";
+  return html`<div class="app">
+    <header class="appbar">
+      <div class="appbar-top">
+        <button class="wordmark" onClick=${() => setRoute("home")} aria-label="Home"><img src="icon.svg" alt="" width="28" height="28" />
+          <span><b class="long">${title}</b><b class="short">${name ? `${name.split(" ")[0]}'s Job Radar` : "Job Radar"}</b><small>${searched}</small></span></button>
+        <span class="spacer"></span>
+        <button class="btn light small hide-s" onClick=${() => setAdding(true)}>Add a job</button>
+        ${gh.mode === "azure" ? html`<button class="btn amber small" onClick=${searchNow}>Search now</button>`
+          : html`<button class="btn light small" onClick=${refresh}>${loading ? "Refreshing…" : "Refresh"}</button>`}
+        <${AccountMenu} setRoute=${setRoute} refresh=${refresh} loading=${loading} onAdd=${() => setAdding(true)} onDisconnect=${() => { gh.forget(); setReady(false); }} />
+      </div>
+      <nav class="tabbar" aria-label="Sections">
+        ${tabs.map(([r, label, n]) => html`<button class="tab" aria-current=${current === r || (r === "profile" && current === "search") ? "page" : null}
+          onClick=${() => setRoute(r)}>${label}${n ? html`<span class="count">${n}</span>` : null}</button>`)}
       </nav>
-      ${showList ? html`<${JobList} ...${ctx} sel=${sel} counts=${counts} onAdd=${() => setAdding(true)} />` : null}
-      <main class=${"mainpane" + (route === "jobs" ? " for-jobs" : "")}>${main}</main>
-      <nav class="mobilebar" aria-label="Main">
-        ${[["jobs", "Jobs"], ["boards", "Boards"], ["profile", "Profile"], ["settings", "Settings"]].map(([r, l]) =>
-          html`<button aria-current=${route === r ? "page" : null} onClick=${() => go(r)}>${l}</button>`)}
-      </nav>
-      ${adding ? html`<${AddJob} say=${say} onClose=${() => setAdding(false)} />` : null}
-      ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}
-    </div>`;
+    </header>
+    <main class=${"appmain" + (current === "jobs" ? " for-jobs" : "")}>${main}</main>
+    ${adding ? html`<${AddJob} say=${say} onClose=${() => setAdding(false)} />` : null}
+    ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}
+  </div>`;
+}
+
+const ROUTES = ["home", "jobs", "tracker", "resumes", "insights", "boards", "profile", "search", "plan", "settings", "admin"];
+function routeFromHash() { const r = location.hash.slice(1); return ROUTES.includes(r) ? r : null; }
+
+function AccountMenu({ setRoute, refresh, loading, onAdd, onDisconnect }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!e.target.closest?.(".acct")) setOpen(false); };
+    addEventListener("click", close);
+    return () => removeEventListener("click", close);
+  }, [open]);
+  const who = gh.mode === "azure" ? gh.me?.user || "" : `${gh.conn.owner}/${gh.conn.repo}`;
+  const item = (label, fn) => html`<button role="menuitem" onClick=${() => { setOpen(false); fn(); }}>${label}</button>`;
+  return html`<div class="acct">
+    <button class="avatar" aria-haspopup="menu" aria-expanded=${open} aria-label="Account" onClick=${() => setOpen(!open)}>${(who[0] || "?").toUpperCase()}</button>
+    ${open ? html`<div class="menu" role="menu">
+      <div class="menu-who">${who}${gh.me?.plan ? html`<small>${planById(gh.me.plan).name} plan</small>` : null}</div>
+      ${item("Add a job", onAdd)}
+      ${item(loading ? "Refreshing…" : "Refresh", refresh)}
+      ${gh.mode === "azure" ? item("Plan", () => setRoute("plan")) : null}
+      ${item("Settings", () => setRoute("settings"))}
+      ${item("Switch light / dark", () => { const t = document.documentElement.dataset.theme; document.documentElement.dataset.theme = t === "dark" ? "light" : "dark"; })}
+      ${gh.mode === "azure" ? item("Sign out", gh.forget) : item("Disconnect this browser", onDisconnect)}
+    </div>` : null}
+  </div>`;
+}
+
+function ProfileTabs({ sub, setRoute, ...ctx }) {
+  return html`<div>
+    <div class="subtabs wrapw">
+      <button class="chip" aria-pressed=${sub === "profile"} onClick=${() => setRoute("profile")}>My details</button>
+      <button class="chip" aria-pressed=${sub === "search"} onClick=${() => setRoute("search")}>Search preferences</button>
+    </div>
+    ${sub === "search" ? html`<${SearchEditor} ...${ctx} />` : html`<${ProfileEditor} ...${ctx} />`}
+  </div>`;
 }
 
 // ------------------------------------------------------------------ first run: connect or create
@@ -926,31 +972,6 @@ function Settings({ report, say, onDisconnect, file }) {
 
 // ------------------------------------------------------------------ hosted (Azure) mode: sign-in, settings, admin
 
-function SignIn() {
-  const me = gh.me || {};
-  return html`<div class="setup">
-    <img src="icon.svg" width="52" height="52" alt="" />
-    <h1>Job Radar finds jobs that fit your resume and writes a tailored version for each one.</h1>
-    ${!me.signedIn ? html`
-      <p class="hint">This Job Radar is invite-only. Sign in with the account your invite was sent to.</p>
-      <div class="card">
-        <h3>Sign in</h3>
-        <div class="row">
-          <button class="btn primary" onClick=${() => gh.signIn("aad")}>Sign in with Microsoft</button>
-          <button class="btn" onClick=${() => gh.signIn("github")}>Sign in with GitHub</button>
-        </div>
-        <p class="hint">Use Gmail or another email? Sign in with Microsoft and choose "Create one!" to make a free Microsoft account with that same email.</p>
-      </div>` : html`
-      <div class="card">
-        <h3>You're not on the invite list yet</h3>
-        <p>You're signed in as <b>${me.user}</b>${me.provider === "github" ? " (GitHub)" : ""}. Send exactly that to the person who invited you so they can add you, then reload this page.</p>
-        <div class="row"><button class="btn" onClick=${async () => { await copy(me.user); }}>Copy ${me.user}</button>
-          <button class="btn" onClick=${() => location.reload()}>Reload</button>
-          <button class="btn" onClick=${gh.forget}>Sign out</button></div>
-      </div>`}
-  </div>`;
-}
-
 function ImportGitHub({ say, onDone }) {
   const [open, setOpen] = useState(false);
   const [v, setV] = useState({ owner: "", repo: "job-radar", token: "" });
@@ -979,33 +1000,6 @@ function ImportGitHub({ say, onDone }) {
   </div>`;
 }
 
-const ago = (t) => (age({ posted: t }) === "now" ? "just now" : age({ posted: t }) + " ago");
-
-function AdminPanel({ say }) {
-  const [d, setD] = useState(null);
-  const [add, setAdd] = useState("");
-  const [note, setNote] = useState("");
-  const load = () => gh.admin().then(setD).catch((e) => say(e.message));
-  useEffect(() => { load(); }, []);
-  async function change(body) {
-    try { setD(await gh.admin(body)); if (body.add) { setAdd(""); setNote(""); say(`${body.add} can sign in now.`); } } catch (e) { say(e.message); }
-  }
-  const nameOf = (u) => u.name || u.id;
-  return html`<div class="card"><h3>Invite list (only you see this)</h3>
-    <p class="hint">Add the email a friend signs in with (Microsoft) or their GitHub username. Then send them this site's link.</p>
-    <div class="row">
-      <input class="input" style="flex:2;min-width:180px" placeholder="friend@example.com or github-username" value=${add} onInput=${(e) => setAdd(e.target.value)} />
-      <input class="input" style="flex:1;min-width:110px" placeholder="Name (optional)" value=${note} onInput=${(e) => setNote(e.target.value)} />
-      <button class="btn primary" disabled=${!add.trim()} onClick=${() => change({ add: add.trim(), note })}>Invite</button>
-    </div>
-    ${d ? html`
-      <ul class="reasons">${d.people.length === 0 ? html`<li class="hint">Nobody invited yet.</li>` : d.people.map((p) => html`<li>
-        <b>${p.id}</b>${p.note ? ` · ${p.note}` : ""} <button class="btn small" onClick=${() => change({ remove: p.id })}>Remove</button></li>`)}</ul>
-      <h3 style="margin-top:14px">People using it</h3>
-      <div class="kv">${d.users.map((u) => html`<span>${nameOf(u)}</span><span class="hint">${u.jobs != null ? `${u.jobs} jobs` : "no resume yet"}${u.run?.state ? ` · last run ${u.run.state}${u.run.ok === false ? " (failed)" : ""}` : ""}${u.last_seen ? ` · seen ${ago(u.last_seen)}` : ""}</span>`)}</div>
-      <p class="hint">Shared job pool updated ${d.pool_updated ? ago(d.pool_updated) : "not yet (the first bulk search runs within 4 hours)"}.</p>` : html`<p class="hint">Loading…</p>`}
-  </div>`;
-}
 
 function HostedSettings({ report, say, file }) {
   const [run, setRun] = useState(null);
@@ -1047,9 +1041,9 @@ function HostedSettings({ report, say, file }) {
 
     ${report ? html`<div class="card"><h3>Last search</h3>
       <p>${report.raw} postings checked, ${report.unique} matched you, ${report.new} new, ${report.tailored_this_run} resumes written.</p>
-      <div class="kv">${Object.entries(src).filter(([, v]) => typeof v !== "object").map(([k, v]) => html`<span>${k}</span><span class="hint">${String(v)}</span>`)}</div></div>` : null}
+      ${gh.me?.admin ? html`<details class="trouble"><summary>Sources (only you see this)</summary><div class="kv">${Object.entries(src).filter(([, v]) => typeof v !== "object").map(([k, v]) => html`<span>${k}</span><span class="hint">${String(v)}</span>`)}</div></details>` : null}</div>` : null}
 
-    ${gh.me?.admin ? html`<${AdminPanel} say=${say} />` : null}
+    ${gh.me?.admin ? html`<div class="card"><h3>Admin</h3><p>Invites, plans and requests are on the <a href="#admin">Admin</a> tab.</p></div>` : null}
 
     <${ImportGitHub} say=${say} />
 

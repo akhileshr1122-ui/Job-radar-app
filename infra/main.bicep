@@ -31,6 +31,10 @@ param joobleKey string = ''
 @secure()
 param rapidApiKey string = ''
 
+@description('Optional: an Anthropic API key that pays for AI resumes of people on the Plus and Pro plans.')
+@secure()
+param sharedAnthropicKey string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower(take('${replace(name, '-', '')}${suffix}', 24))
 
@@ -106,7 +110,8 @@ var optionalSecrets = concat(
   empty(adzunaAppId) ? [] : [ { name: 'adzuna-id', value: adzunaAppId } ],
   empty(adzunaAppKey) ? [] : [ { name: 'adzuna-key', value: adzunaAppKey } ],
   empty(joobleKey) ? [] : [ { name: 'jooble-key', value: joobleKey } ],
-  empty(rapidApiKey) ? [] : [ { name: 'rapidapi-key', value: rapidApiKey } ]
+  empty(rapidApiKey) ? [] : [ { name: 'rapidapi-key', value: rapidApiKey } ],
+  empty(sharedAnthropicKey) ? [] : [ { name: 'shared-anthropic-key', value: sharedAnthropicKey } ]
 )
 var secrets = concat([ { name: 'storage-conn', value: storageConn } ], optionalSecrets)
 
@@ -114,12 +119,14 @@ var optionalEnv = concat(
   empty(adzunaAppId) ? [] : [ { name: 'ADZUNA_APP_ID', secretRef: 'adzuna-id' } ],
   empty(adzunaAppKey) ? [] : [ { name: 'ADZUNA_APP_KEY', secretRef: 'adzuna-key' } ],
   empty(joobleKey) ? [] : [ { name: 'JOOBLE_KEY', secretRef: 'jooble-key' } ],
-  empty(rapidApiKey) ? [] : [ { name: 'RAPIDAPI_KEY', secretRef: 'rapidapi-key' } ]
+  empty(rapidApiKey) ? [] : [ { name: 'RAPIDAPI_KEY', secretRef: 'rapidapi-key' } ],
+  empty(sharedAnthropicKey) ? [] : [ { name: 'SHARED_ANTHROPIC_API_KEY', secretRef: 'shared-anthropic-key' } ]
 )
 var runnerEnv = concat([
   { name: 'STORAGE_CONNECTION', secretRef: 'storage-conn' }
   { name: 'ENGINE_ZIP', value: engineZip }
   { name: 'PYTHONUNBUFFERED', value: '1' }
+  { name: 'ADMIN_USERS', value: adminUsers }
 ], optionalEnv)
 
 // Download the latest engine, install it, run. Always current with the public repo; no image to build.
