@@ -519,11 +519,12 @@ def jsearch(cfg, report, state):
         return []
     jobs = []
     country = home_country(cfg)
-    where = places(cfg) or [COUNTRY_NAMES.get(country, "")]
+    # "Scarborough, ON, Canada" -> "Scarborough, ON": Google for Jobs matches city + province best; also search the whole country
+    where = [", ".join(p.split(",")[:2]).strip() for p in places(cfg)][:2] + [COUNTRY_NAMES.get(country, "")]
     plan = [(f"{q} in {where[i % len(where)]}", country) for i, q in enumerate(key_queries(cfg, 5))] + \
            [(f"{key_queries(cfg, 1)[0] if key_queries(cfg, 1) else 'jobs'} remote", country)]
     for q, country in plan[: cfg.get("jsearch_per_day", 6)]:
-        params = {"query": q, "country": country, "date_posted": "3days"}
+        params = {"query": q, "country": country, "date_posted": "week"}
         hdr = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}
         r = get("https://jsearch.p.rapidapi.com/search-v2", params=params, headers=hdr, timeout=60, retries=1)
         if r is not None and r.status_code == 404:  # older plans still answer on /search
