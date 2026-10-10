@@ -1,0 +1,28 @@
+name: Azure status
+
+# Shows what the hosted Job Radar pulled (shared job pool and each person's matches) in the run summary.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    if: github.repository == 'akhileshr1122-ui/Job-radar-app'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Read status
+        env:
+          RG: ${{ vars.JR_RESOURCE_GROUP || 'job-radar' }}
+        run: |
+          pip install -q azure-storage-blob
+          acct=$(az storage account list -g "$RG" --query "[0].name" -o tsv)
+          export STORAGE_CONNECTION=$(az storage account show-connection-string -g "$RG" -n "$acct" -o tsv)
+          echo "::add-mask::$STORAGE_CONNECTION"
+          python tools/azure_status.py
+          echo "::notice::Bulk job runs: $(az containerapp job execution list -n jobradar-bulk -g "$RG" --query "[0:3].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"
