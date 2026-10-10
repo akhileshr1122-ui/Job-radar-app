@@ -170,11 +170,11 @@ def _slim(resume):
 
 def ai_available():
     """AI tailoring works with either a Claude API key or a Claude subscription token (Pro/Max via Claude Code)."""
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"))
+    return bool((os.environ.get("ANTHROPIC_API_KEY") or "").strip() or (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip())
 
 
 def _call_api(system, user, cfg, max_tokens):
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
     try:
         r = requests.post("https://api.anthropic.com/v1/messages", timeout=180, headers={
             "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
@@ -219,9 +219,9 @@ def _call_subscription(system, user, cfg):
 
 
 def call_claude(system, user, cfg, max_tokens=3000):
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
         return _call_api(system, user, cfg, max_tokens)
-    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+    if (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip():
         return _call_subscription(system, user, cfg)
     return None
 

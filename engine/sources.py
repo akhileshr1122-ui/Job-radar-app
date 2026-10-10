@@ -509,7 +509,7 @@ def workingnomads(cfg, report):
 
 def jsearch(cfg, report, state):
     """JSearch (RapidAPI) = Google for Jobs: LinkedIn, Indeed, Glassdoor, ZipRecruiter... Once a day to fit the free tier."""
-    key = os.environ.get("RAPIDAPI_KEY")
+    key = (os.environ.get("RAPIDAPI_KEY") or "").strip()
     if not key:
         report["jsearch"] = "skipped (no RAPIDAPI_KEY secret)"
         return []
@@ -555,7 +555,7 @@ def jsearch(cfg, report, state):
 
 
 def adzuna(cfg, report):
-    app_id, app_key = os.environ.get("ADZUNA_APP_ID"), os.environ.get("ADZUNA_APP_KEY")
+    app_id, app_key = (os.environ.get("ADZUNA_APP_ID") or "").strip(), (os.environ.get("ADZUNA_APP_KEY") or "").strip()
     if not app_id or not app_key:
         report["adzuna"] = "skipped (no ADZUNA_APP_ID / ADZUNA_APP_KEY secret)"
         return []
@@ -592,7 +592,7 @@ def adzuna(cfg, report):
 
 
 def jooble(cfg, report):
-    key = os.environ.get("JOOBLE_KEY")
+    key = (os.environ.get("JOOBLE_KEY") or "").strip()
     if not key:
         report["jooble"] = "skipped (no JOOBLE_KEY secret)"
         return []
