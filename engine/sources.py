@@ -523,8 +523,11 @@ def jsearch(cfg, report, state):
     plan = [(f"{q} in {where[i % len(where)]}", country) for i, q in enumerate(key_queries(cfg, 5))] + \
            [(f"{key_queries(cfg, 1)[0] if key_queries(cfg, 1) else 'jobs'} remote", country)]
     for q, country in plan[: cfg.get("jsearch_per_day", 6)]:
-        r = get("https://jsearch.p.rapidapi.com/search", params={"query": q, "page": 1, "num_pages": 1, "country": country, "date_posted": "3days"},
-                headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}, timeout=60, retries=1)
+        params = {"query": q, "country": country, "date_posted": "3days"}
+        hdr = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}
+        r = get("https://jsearch.p.rapidapi.com/search-v2", params=params, headers=hdr, timeout=60, retries=1)
+        if r is not None and r.status_code == 404:  # older plans still answer on /search
+            r = get("https://jsearch.p.rapidapi.com/search", params={**params, "page": 1, "num_pages": 1}, headers=hdr, timeout=60, retries=1)
         d = _json(r)
         if d is None:
             if r is None:
@@ -534,7 +537,12 @@ def jsearch(cfg, report, state):
                 report["jsearch_error"] = f"HTTP {r.status_code}: {msg}" + (
                     " (subscribe to JSearch by OpenWeb Ninja, free Basic plan)" if r.status_code == 403 else "")
             break
-        for j in d.get("data") or []:
+        data = d.get("data")
+        rows = data.get("jobs") if isinstance(data, dict) else data
+        if not isinstance(rows, list):
+            report["jsearch_error"] = f"unexpected answer: {str(d)[:160]}"
+            break
+        for j in rows:
             ctry = (j.get("job_country") or "").upper()
             where = ", ".join(x for x in [j.get("job_city"), j.get("job_state"), {"CA": "Canada", "US": "USA"}.get(ctry, ctry)] if x)
             pub = (j.get("job_publisher") or "web").strip()
