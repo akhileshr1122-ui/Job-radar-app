@@ -50,3 +50,56 @@ for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
     except Exception:
         pass
 sys.exit(0)
+
+
+# ---------------------------------------------------------------- why jobs are (not) kept, per person
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
+import sources as S  # noqa: E402
+import score as SC  # noqa: E402
+from tailor import all_skills  # noqa: E402
+from util import classify_location, geocode, load_geocache  # noqa: E402
+
+load_geocache(get("shared/geocache.json") or {})
+for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
+    uid = item.name.split("/")[1]
+    cfg, resume = get(f"users/{uid}/profile/search.json"), get(f"users/{uid}/profile/resume.json")
+    if not cfg or not resume or not resume.get("experience"):
+        continue
+    locs = cfg.setdefault("locations", {})
+    if not locs.get("search_locations") and resume.get("contact", {}).get("location"):
+        locs["search_locations"] = [{"place": resume["contact"]["location"], "radius_km": 50}]
+    cfg["_ex_amazon"] = any("amazon" in (e.get("company") or "").lower() for e in resume.get("experience", []))
+    if not cfg.get("title_terms", {}).get("required") or not cfg.get("title_terms", {}).get("weighted"):
+        w = S.query_words(cfg, 12)
+        cfg["_auto_required"] = list(dict.fromkeys(w + [x.replace("-", "") for x in w if "-" in x]))
+    if not cfg.get("description_keywords"):
+        cfg["description_keywords"] = {s.lower().split(" (")[0]: 2 for s in all_skills(resume) if len(s) < 40}
+    cfg["_place_points"] = [(p, ll, S.radius_km(cfg, p)) for p in S.places(cfg) for ll in [geocode(p)] if ll]
+    req = cfg["title_terms"].get("required") or cfg.get("_auto_required", [])
+    tally = collections.Counter()
+    near_miss = collections.Counter()
+    kept_src = collections.Counter()
+    for j in jobs:
+        j = dict(j)
+        t = (j.get("title") or "").lower()
+        if any(SC._has(t, x) for x in cfg.get("exclude_title", [])):
+            tally["title excluded"] += 1
+            continue
+        if req and not any(SC._has(t, x) for x in req):
+            tally["title has none of the required words"] += 1
+            continue
+        res = SC.score(j, cfg)
+        if not res:
+            c, r = classify_location(j.get("location", ""), j.get("remote"), j.get("description", ""))
+            tally[f"dropped after title match (country {c}, remote {r})"] += 1
+            continue
+        if res[0] < cfg["min_score_to_save"]:
+            tally["scored below the keep score"] += 1
+            near_miss[res[0] // 10 * 10] += 1
+            continue
+        tally["kept"] += 1
+        kept_src[j.get("source")] += 1
+    acct = get(f"users/{uid}/account.json") or {}
+    note(f"WHY {acct.get('name', uid)}: required={req[:12]} places={[p for p, _, _ in cfg['_place_points']]} mode={locs.get('mode')} "
+         f"country={locs.get('country')} min={cfg['min_score_to_save']} | " + "; ".join(f"{k}: {v}" for k, v in tally.most_common())
+         + f" | low scores by band {dict(sorted(near_miss.items()))} | kept by source {dict(kept_src)}")
