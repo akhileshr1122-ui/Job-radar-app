@@ -21,10 +21,10 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-# Keys pasted into GitHub/Azure often carry a stray newline or spaces; clean them once for every source and tool.
+# Keys pasted into GitHub/Azure often carry stray newlines or spaces (even mid-token when a terminal wraps it); clean them once.
 for _k in ("RAPIDAPI_KEY", "ADZUNA_APP_ID", "ADZUNA_APP_KEY", "JOOBLE_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
     if _k in os.environ:
-        os.environ[_k] = os.environ[_k].strip()
+        os.environ[_k] = "".join(os.environ[_k].split())  # keys never contain spaces; terminals wrap long tokens
 
 import pagefetch  # noqa: E402
 import render  # noqa: E402
