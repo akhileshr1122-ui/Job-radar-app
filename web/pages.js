@@ -244,7 +244,7 @@ export function PlanPage({ say }) {
   async function upgrade(p) {
     try {
       await gh.requestPlan(p.id, "");
-      if (p.paymentLink) window.open(p.paymentLink, "_blank", "noopener");
+      if (/^https:\/\//.test(p.paymentLink || "")) window.open(p.paymentLink, "_blank", "noopener");
       setSent(p.id);
       say(p.paymentLink ? `Opening payment for ${p.name}. You'll be moved to ${p.name} once it's confirmed.` : `Request for ${p.name} sent. You'll be moved over once it's approved.`);
     } catch (e) { say(e.message); }

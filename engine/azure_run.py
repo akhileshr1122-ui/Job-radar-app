@@ -188,7 +188,7 @@ def plan_of(uid):
 
 def user_env(uid):
     sec = get_json(f"users/{uid}/secrets.json", {}) or {}
-    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "STORAGE_CONNECTION", "SHARED_ANTHROPIC_API_KEY")}
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "STORAGE_CONNECTION", "SHARED_ANTHROPIC_API_KEY", "ADMIN_CLAUDE_TOKEN")}
     plan = plan_of(uid)
     limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
     env["JR_LIMITS"] = json.dumps({k: v for k, v in limits.items() if k.startswith("max_")})

@@ -103,7 +103,7 @@ jobs:
           host=$(echo "${{ steps.infra.outputs.web_url }}" | sed 's#https://##')
           {
             echo "### Job Radar is live: ${{ steps.infra.outputs.web_url }}"
-            echo "Sign in with ${{ vars.JR_ADMIN_USERS }} and invite friends from Settings."
+            echo "Sign in with your admin account and invite friends from Settings."
             echo ""
             echo "**Your own domain:** at your domain provider add a **CNAME** record pointing to \`$host\`, then set the repo variable \`JR_DOMAIN\` (e.g. \`jobs.ladioro.com\`) and run this workflow again."
             if [ -n "${{ vars.JR_DOMAIN }}" ]; then echo ""; echo "Domain **${{ vars.JR_DOMAIN }}**: ${{ steps.domain.outputs.status }} (HTTPS certificate is issued automatically, usually within 15 minutes)."; fi

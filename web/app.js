@@ -2,7 +2,7 @@ import { html, render, useState, useEffect, useMemo, useRef, useCallback } from 
 import gh from "./backend.js";
 import { resumePdf, fileName } from "./pdf.js";
 import { BOARD_GROUPS } from "./boards.js";
-import { PIPE, LABEL, scoreColor, clone, lines, commas, age, ageHours, store, restore, copy, Ring, ago, nextRun, clock, RadarPulse } from "./ui.js";
+import { PIPE, LABEL, scoreColor, clone, lines, commas, age, ageHours, store, restore, copy, Ring, ago, nextRun, clock, RadarPulse, safeUrl } from "./ui.js";
 import { Landing } from "./landing.js";
 import { Home, Tracker, Documents, Insights, PlanPage, AdminPage } from "./pages.js";
 import { Coverage, UsagePage } from "./dash.js";
@@ -425,12 +425,13 @@ function Detail({ job, resume, base, statuses, setStatus, say, setSel }) {
     resumePdf(draft, resume).save(fileName(resume, job));
   }
   async function applyNow() {
-    if (!draft || !resume) { window.open(job.apply_url || job.url, "_blank", "noopener"); return; }
+    const link = safeUrl(job.apply_url) || safeUrl(job.url);
+    if (!draft || !resume) { if (link) window.open(link, "_blank", "noopener"); return; }
     setBusy(true);
     try {
       downloadPdf();
       const copied = draft.cover_letter ? await copy(draft.cover_letter) : false;
-      window.open(job.apply_url || job.url, "_blank", "noopener");
+      if (link) window.open(link, "_blank", "noopener");
       setStatus(job.id, "applied");
       if (dirty) await saveEdits();
       say(`Resume downloaded${copied ? ", cover letter copied" : ""}. Attach it on the application page${dirty ? "; your edits are saved too" : ""}.`);
@@ -457,7 +458,7 @@ function Detail({ job, resume, base, statuses, setStatus, say, setSel }) {
       <button class="btn primary big" disabled=${busy} onClick=${applyNow}>${busy ? "Preparing…" : "Apply now"}</button>
       <button class="btn" onClick=${() => setEditing(!editing)}>${editing ? "Done editing" : "Edit resume and cover letter"}</button>
       <button class="btn" onClick=${downloadPdf}>Download PDF</button>
-      <a class="btn" href=${job.url || job.apply_url} target="_blank" rel="noopener">Open posting</a>
+      ${safeUrl(job.url) || safeUrl(job.apply_url) ? html`<a class="btn" href=${safeUrl(job.url) || safeUrl(job.apply_url)} target="_blank" rel="noopener noreferrer">Open posting</a>` : null}
     </div>
     <p class="hint">Apply now downloads this resume${dirty ? " with your edits" : ""}, copies the cover letter and opens the application. With the Chrome extension, the form fills itself; you check it and submit.</p>
 
@@ -587,7 +588,7 @@ function md(src) {
 function AddJob({ say, onClose }) {
   const [v, setV] = useState({ url: "", title: "", company: "", description: "" });
   const [busy, setBusy] = useState(false);
-  const ok = /^https?:\/\//.test(v.url) || v.description.length > 100;
+  const ok = !!safeUrl(v.url) || (!v.url.trim() && v.description.length > 100);
   async function go() {
     setBusy(true);
     try { await gh.request("add_job", v); say("Added. Your tailored resume and cover letter will be ready in about 3–5 minutes."); onClose(); }

@@ -55,3 +55,6 @@ export function RadarPulse({ size = 44 }) {
     <circle class="pulse-blip b2" cx="34" cy="64" r="3.5" fill="var(--amber)" />
   </svg>`;
 }
+
+/** Only plain web links; anything else (javascript:, data:...) is dropped. */
+export const safeUrl = (u) => (/^https?:\/\/\S+$/i.test(String(u || "").trim()) ? String(u).trim() : "");

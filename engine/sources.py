@@ -12,7 +12,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
-from util import get, post, strip_html, to_iso
+from util import safe_url, get, post, strip_html, to_iso
 
 # Lower number = preferred when the same job appears on several sources.
 SOURCE_RANK = {
@@ -31,6 +31,7 @@ def _job(**kw):
     base["salary"] = str(base["salary"] or "")
     base["description"] = str(base["description"] or "")
     base["location"] = str(base["location"] or "")
+    base["url"], base["apply_url"] = safe_url(base["url"]), safe_url(base["apply_url"])
     if not base["apply_url"]:
         base["apply_url"] = base["url"]
     return base

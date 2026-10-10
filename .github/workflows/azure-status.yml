@@ -24,6 +24,7 @@ jobs:
       - name: Read status
         env:
           RG: ${{ vars.JR_RESOURCE_GROUP || 'job-radar' }}
+          JR_STATUS_DETAIL: ${{ github.event.repository.private && '1' || '0' }}
         run: |
           pip install -q azure-storage-blob
           acct=$(az storage account list -g "$RG" --query "[0].name" -o tsv)
@@ -33,7 +34,7 @@ jobs:
           if [ "${{ inputs.search_everyone }}" = "true" ]; then
             for u in $(az storage blob list -c jobradar --prefix users/ --delimiter / --connection-string "$STORAGE_CONNECTION" --query "[].name" -o tsv); do
               uid=$(echo "$u" | cut -d/ -f2)
-              az storage message put -q jobradar-runs --content "{\"uid\": \"$uid\", \"search\": true}" --connection-string "$STORAGE_CONNECTION" -o none && echo "::notice::Search queued for $uid"
+              az storage message put -q jobradar-runs --content "{\"uid\": \"$uid\", \"search\": true}" --connection-string "$STORAGE_CONNECTION" -o none && echo "Search queued for one account"
             done
           fi
           echo "::notice::Queue job runs: $(az containerapp job execution list -n jobradar-queue -g "$RG" --query "[0:5].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"

@@ -6,6 +6,9 @@ import sys
 
 from azure.storage.blob import BlobServiceClient
 
+# The repo is public, so workflow notes/summaries are world-readable. Per-person detail (names, settings,
+# logs, token status) is only printed when the workflow sets JR_STATUS_DETAIL=1 (it does so only for private repos).
+DETAIL = os.environ.get("JR_STATUS_DETAIL") == "1"
 box = BlobServiceClient.from_connection_string(os.environ["STORAGE_CONNECTION"]).get_container_client("jobradar")
 
 
@@ -34,8 +37,13 @@ note("POOL top places: " + ", ".join(f"{k} {v}" for k, v in countries.most_commo
 titles = collections.Counter(j.get("title", "").lower()[:40] for j in jobs)
 note("POOL sample titles: " + "; ".join(t for t, _ in titles.most_common(25)))
 
-for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
-    uid = item.name.split("/")[1]
+people = [i.name.split("/")[1] for i in box.walk_blobs(name_starts_with="users/", delimiter="/")]
+note(f"PEOPLE: {len(people)} accounts")
+if not DETAIL:
+    note("Per-person detail hidden because this repository is public.")
+    sys.exit(0)
+
+for uid in people:
     acct = get(f"users/{uid}/account.json") or {}
     jf = get(f"users/{uid}/data/jobs.json") or {}
     r = get(f"users/{uid}/data/report.json") or {}
@@ -44,7 +52,7 @@ for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
     note(f"RUNSTATUS {acct.get('name', uid)}: {json.dumps(st)}")
     sec = get(f"users/{uid}/secrets.json") or {}
     tok = sec.get("claude_token") or ""
-    note(f"AI {acct.get('name', uid)}: claude token saved={bool(tok)} looks_valid={tok.startswith('sk-ant-oat')} length={len(tok)}; api key saved={bool(sec.get('anthropic_key'))}")
+    note(f"AI {acct.get('name', uid)}: claude token saved={bool(tok)}; api key saved={bool(sec.get('anthropic_key'))}")
     note(f"USER {acct.get('name', uid)}: {jf.get('count', 0)} jobs listed, {jf.get('new_this_run', 0)} new; last run {st.get('state')} ok={st.get('ok')} {st.get('finished', '')} "
          f"{st.get('note', '')}; checked {r.get('raw')} passed {r.get('passed')} tailored {r.get('tailored_this_run')}; queries {cfg.get('queries', [])[:6]}; "
          f"companies {len(cfg.get('ats_companies', {}).get('candidates', []))}")

@@ -33,7 +33,7 @@ from score import score  # noqa: E402
 import importer  # noqa: E402
 import tailor as tailor_mod  # noqa: E402
 from tailor import ai_available, all_skills, interview_prep, keyword_tailor, tailor  # noqa: E402
-from util import classify_location, geocache, geocode, job_id, load_geocache, norm, now_iso  # noqa: E402
+from util import classify_location, geocache, geocode, job_id, load_geocache, norm, now_iso, safe_url  # noqa: E402
 
 ROOT = DATA = RES_DIR = PREP_DIR = REQ_DIR = ""
 
@@ -113,7 +113,7 @@ def handle_add_requests(reqs, cfg):
     """Jobs the user shared into the app. Always kept, always tailored."""
     out = []
     for req in reqs:
-        url = (req.get("url") or "").strip()
+        url = safe_url(req.get("url"))
         page = pagefetch.fetch(url) if url else {}
         j = {
             "title": req.get("title") or page.get("title") or "Job you added",

@@ -3,8 +3,11 @@
 Most job pages embed schema.org JobPosting JSON-LD (it's what Google for Jobs reads), so that is tried first;
 otherwise the page title and visible text are used.
 """
+import ipaddress
 import json
 import re
+import socket
+from urllib.parse import urlparse
 
 import requests
 
@@ -33,9 +36,36 @@ def _jobposting(obj):
     return None
 
 
-def fetch(url):
+def _public(url):
+    """True only for http(s) links whose host resolves to public internet addresses (no internal or cloud-metadata hosts)."""
     try:
-        r = requests.get(url, headers={"User-Agent": UA, "Accept-Language": "en-CA,en;q=0.9"}, timeout=30, allow_redirects=True)
+        u = urlparse(url)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            return False
+        for info in socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80)):
+            ip = ipaddress.ip_address(info[4][0])
+            if not ip.is_global:
+                return False
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def fetch(url):
+    if not _public(url):
+        print("  skipped: not a public web address")
+        return {}
+    try:
+        for _ in range(6):  # follow redirects one by one, checking every hop
+            r = requests.get(url, headers={"User-Agent": UA, "Accept-Language": "en-CA,en;q=0.9"}, timeout=30, allow_redirects=False)
+            if r.is_redirect or r.status_code in (301, 302, 303, 307, 308):
+                from urllib.parse import urljoin
+                url = urljoin(url, r.headers.get("Location", ""))
+                if not _public(url):
+                    print("  skipped: redirected to a non-public address")
+                    return {}
+                continue
+            break
     except requests.RequestException as e:
         print(f"  fetch failed: {e!r}")
         return {}

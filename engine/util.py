@@ -214,3 +214,9 @@ def km_between(a, b):
     lat1, lon1, lat2, lon2 = map(math.radians, (a[0], a[1], b[0], b[1]))
     h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
     return 6371 * 2 * math.asin(math.sqrt(h))
+
+
+def safe_url(u):
+    """Only plain web links are kept; anything else (javascript:, data:, file:...) becomes empty."""
+    u = str(u or "").strip()
+    return u if re.match(r"(?i)^https?://[^\s]+$", u) else ""
