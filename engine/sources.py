@@ -517,13 +517,21 @@ def jsearch(cfg, report, state):
     if state.get("jsearch_day") == today:
         report["jsearch"] = "already ran today (free tier: once a day)"
         return []
+    month = today[:7]
+    if state.get("jsearch_month") != month:
+        state["jsearch_month"], state["jsearch_calls"] = month, 0
+    left = cfg.get("jsearch_per_month", 180) - state.get("jsearch_calls", 0)
+    if left <= 0:
+        report["jsearch"] = f"monthly limit reached ({state.get('jsearch_calls')} searches this month)"
+        return []
     jobs = []
     country = home_country(cfg)
     # "Scarborough, ON, Canada" -> "Scarborough, ON": Google for Jobs matches city + province best; also search the whole country
     where = [", ".join(p.split(",")[:2]).strip() for p in places(cfg)][:2] + [COUNTRY_NAMES.get(country, "")]
     plan = [(f"{q} in {where[i % len(where)]}", country) for i, q in enumerate(key_queries(cfg, 5))] + \
            [(f"{key_queries(cfg, 1)[0] if key_queries(cfg, 1) else 'jobs'} remote", country)]
-    for q, country in plan[: cfg.get("jsearch_per_day", 6)]:
+    for q, country in plan[: min(cfg.get("jsearch_per_day", 6), left)]:
+        state["jsearch_calls"] = state.get("jsearch_calls", 0) + 1
         params = {"query": q, "country": country, "date_posted": "week"}
         hdr = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}
         r = get("https://jsearch.p.rapidapi.com/search-v2", params=params, headers=hdr, timeout=60, retries=1)
@@ -556,6 +564,7 @@ def jsearch(cfg, report, state):
     if jobs or "jsearch_error" not in report:
         state["jsearch_day"] = today  # a failed attempt doesn't use up the day
     report["jsearch"] = len(jobs)
+    report["jsearch_used_this_month"] = state.get("jsearch_calls", 0)
     return jobs
 
 
