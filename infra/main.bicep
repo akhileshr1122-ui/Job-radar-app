@@ -31,6 +31,10 @@ param joobleKey string = ''
 @secure()
 param rapidApiKey string = ''
 
+@description('Optional: the admin\'s own Claude Pro/Max token (claude setup-token). Used only for admin accounts.')
+@secure()
+param adminClaudeToken string = ''
+
 @description('Model used for AI resumes paid by the shared key (Plus and Pro plans).')
 param sharedAiModel string = 'claude-haiku-4-5-20251001'
 
@@ -114,7 +118,8 @@ var optionalSecrets = concat(
   empty(adzunaAppKey) ? [] : [ { name: 'adzuna-key', value: adzunaAppKey } ],
   empty(joobleKey) ? [] : [ { name: 'jooble-key', value: joobleKey } ],
   empty(rapidApiKey) ? [] : [ { name: 'rapidapi-key', value: rapidApiKey } ],
-  empty(sharedAnthropicKey) ? [] : [ { name: 'shared-anthropic-key', value: sharedAnthropicKey } ]
+  empty(sharedAnthropicKey) ? [] : [ { name: 'shared-anthropic-key', value: sharedAnthropicKey } ],
+  empty(adminClaudeToken) ? [] : [ { name: 'admin-claude-token', value: adminClaudeToken } ]
 )
 var secrets = concat([ { name: 'storage-conn', value: storageConn } ], optionalSecrets)
 
@@ -123,7 +128,8 @@ var optionalEnv = concat(
   empty(adzunaAppKey) ? [] : [ { name: 'ADZUNA_APP_KEY', secretRef: 'adzuna-key' } ],
   empty(joobleKey) ? [] : [ { name: 'JOOBLE_KEY', secretRef: 'jooble-key' } ],
   empty(rapidApiKey) ? [] : [ { name: 'RAPIDAPI_KEY', secretRef: 'rapidapi-key' } ],
-  empty(sharedAnthropicKey) ? [] : [ { name: 'SHARED_ANTHROPIC_API_KEY', secretRef: 'shared-anthropic-key' } ]
+  empty(sharedAnthropicKey) ? [] : [ { name: 'SHARED_ANTHROPIC_API_KEY', secretRef: 'shared-anthropic-key' } ],
+  empty(adminClaudeToken) ? [] : [ { name: 'ADMIN_CLAUDE_TOKEN', secretRef: 'admin-claude-token' } ]
 )
 var runnerEnv = concat([
   { name: 'STORAGE_CONNECTION', secretRef: 'storage-conn' }

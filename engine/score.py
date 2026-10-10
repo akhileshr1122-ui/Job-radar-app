@@ -62,9 +62,9 @@ def score(job, cfg):
     loc_l = job["location"].lower()
     locs = cfg["locations"]
     home = (locs.get("country") or "CA").upper()
-    other = "US" if home == "CA" else "CA"
+    other = {"CA": "US", "US": "CA"}.get(home, "")  # Canada and the US can also include each other's remote jobs
     nearby_only = locs.get("mode") == "nearby"
-    home_name = {"CA": "Canada", "US": "the US"}[home]
+    home_name = {"CA": "Canada", "US": "the US", "AU": "Australia", "IN": "India"}.get(home, home)
     loc_pts = 0
     if country == home:
         if remote:
@@ -88,9 +88,15 @@ def score(job, cfg):
                 loc_pts, why = 0, f"Elsewhere in {home_name}"
         reasons.append(why)
     elif country == "NA":
-        loc_pts = 6
-        reasons.append("Remote, North America / anywhere")
-    elif country == other:
+        if other:
+            loc_pts = 6
+            reasons.append("Remote, North America / anywhere")
+        elif re.search(r"north america|americas|\bus\b|usa|canada", loc_l):
+            return None  # remote, but only for North America
+        else:
+            loc_pts = 4
+            reasons.append("Remote, open worldwide")
+    elif other and country == other:
         flag = "include_us_remote" if other == "US" else "include_ca_remote"
         if remote and locs.get(flag, other == "US"):
             if home_name.replace("the ", "").lower() in desc:

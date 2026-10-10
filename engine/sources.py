@@ -61,7 +61,7 @@ def _money(lo, hi, cur=""):
 
 # ---------------------------------------------------------------- search settings helpers (work for any profile)
 
-COUNTRY_NAMES = {"ca": "Canada", "us": "USA"}
+COUNTRY_NAMES = {"ca": "Canada", "us": "USA", "au": "Australia", "in": "India"}
 
 
 def places(cfg):

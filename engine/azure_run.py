@@ -168,6 +168,12 @@ PLAN_LIMITS = {
 }
 
 
+def is_admin(uid):
+    who = ((get_json(f"users/{uid}/account.json", {}) or {}).get("name") or "").strip().lower()
+    admins = [a.strip().lower() for a in os.environ.get("ADMIN_USERS", "").replace(";", ",").split(",") if a.strip()]
+    return bool(who) and who in admins
+
+
 def plan_of(uid):
     acct = get_json(f"users/{uid}/account.json", {}) or {}
     who = (acct.get("name") or "").strip().lower()
@@ -191,6 +197,9 @@ def user_env(uid):
         env["ANTHROPIC_API_KEY"] = sec["anthropic_key"]
     if sec.get("claude_token"):
         env["CLAUDE_CODE_OAUTH_TOKEN"] = sec["claude_token"]
+        ensure_claude_cli(env)
+    elif not sec.get("anthropic_key") and os.environ.get("ADMIN_CLAUDE_TOKEN") and is_admin(uid):
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = os.environ["ADMIN_CLAUDE_TOKEN"]  # the admin's own Claude plan, for the admin only
         ensure_claude_cli(env)
     elif not sec.get("anthropic_key") and limits["shared_ai"] and os.environ.get("SHARED_ANTHROPIC_API_KEY"):
         env["ANTHROPIC_API_KEY"] = os.environ["SHARED_ANTHROPIC_API_KEY"]  # AI included in the plan

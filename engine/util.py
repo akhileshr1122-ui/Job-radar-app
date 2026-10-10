@@ -123,12 +123,30 @@ US_ABBR = ["al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id
            "ri", "sc", "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv", "wi", "wy", "dc"]
 
 
+AU_WORDS = ["australia", "sydney", "melbourne", "brisbane", "perth", "adelaide", "canberra", "hobart", "darwin", "gold coast",
+            "new south wales", "queensland", "tasmania", "western australia", "south australia", "northern territory",
+            "australian capital territory", "newcastle, nsw", "parramatta", "geelong", "wollongong"]
+AU_ABBR = ["nsw", "vic", "qld", "act", "tas"]
+IN_WORDS = ["india", "bengaluru", "bangalore", "mumbai", "new delhi", "delhi", "hyderabad, telangana", "hyderabad, india", "telangana",
+            "chennai", "pune", "kolkata", "gurgaon", "gurugram", "noida", "ahmedabad", "kochi", "jaipur", "karnataka", "maharashtra",
+            "tamil nadu", "kerala", "haryana", "uttar pradesh", "west bengal", "gujarat", "andhra pradesh", "chandigarh", "indore",
+            "coimbatore", "visakhapatnam", "trivandrum", "thiruvananthapuram", "bhubaneswar", "lucknow", "nagpur", "mysuru", "mysore"]
+
+
+_AU_RX = re.compile(r"\b(" + "|".join(map(re.escape, AU_WORDS)) + r")\b")
+_IN_RX = re.compile(r"\b(" + "|".join(map(re.escape, IN_WORDS)) + r")\b")
+
+
 def classify_location(location, remote_flag=False, extra_text=""):
-    """Return (country, remote) where country in CA, US, NA (remote N. America / anywhere), OTHER, UNKNOWN."""
+    """Return (country, remote): CA, US, AU, IN, NA (remote N. America / anywhere), OTHER or UNKNOWN."""
     loc = (location or "").lower()
     blob = f"{loc} {extra_text[:400].lower()}"
     remote = bool(remote_flag) or bool(re.search(r"\bremote\b|work from home|wfh|anywhere|distributed", loc))
     tokens = set(re.findall(r"[a-z]+", loc))
+    if _AU_RX.search(loc) or re.search(r",\s*(" + "|".join(AU_ABBR) + r")\b", loc) or tokens & {"aus"}:
+        return "AU", remote
+    if _IN_RX.search(loc) or tokens & {"ind"} or re.fullmatch(r"\s*hyderabad\s*", loc):
+        return "IN", remote
     if "canada" in loc or any(p in loc for p in CA_PROVINCES) or any(c in loc for c in CA_CITIES) \
             or re.search(r",\s*(" + "|".join(CA_ABBR) + r")\b", loc):
         return "CA", remote

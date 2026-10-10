@@ -348,7 +348,7 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
         <input aria-label="Location" placeholder="City, province or Remote" value=${where} onInput=${(e) => setWhere(e.target.value)} />
       </div>
       <div class="chips">
-        <button class="chip" aria-pressed=${f.home} onClick=${() => toggle("home")}>${home === "US" ? "US" : "Canada"}</button>
+        <button class="chip" aria-pressed=${f.home} onClick=${() => toggle("home")}>${{ US: "US", AU: "Australia", IN: "India" }[home] || "Canada"}</button>
         <button class="chip" aria-pressed=${f.remote} onClick=${() => toggle("remote")}>Remote</button>
         <button class="chip" aria-pressed=${f.ready} onClick=${() => toggle("ready")}>Resume ready</button>
         <button class="chip" aria-pressed=${f.newest} onClick=${() => toggle("newest")}>${f.newest ? "Newest first" : "Best match first"}</button>
@@ -773,7 +773,7 @@ function SearchEditor({ search, setSearch, say, resume }) {
     <div class="card"><h3>Where</h3>
       <div class="grid2">
         <div class="field"><label>Country you can work in</label>
-          <select class="input" value=${L.country || "CA"} onChange=${(e) => set((n) => { n.locations.country = e.target.value; })}><option value="CA">Canada</option><option value="US">United States</option></select></div>
+          <select class="input" value=${L.country || "CA"} onChange=${(e) => set((n) => { n.locations.country = e.target.value; })}><option value="CA">Canada</option><option value="US">United States</option><option value="AU">Australia</option><option value="IN">India</option></select></div>
         <div class="field"><label>Which jobs</label>
           <select class="input" value=${L.mode || "country"} onChange=${(e) => set((n) => { n.locations.mode = e.target.value; })}>
             <option value="nearby">Only near my locations, plus remote</option><option value="country">Anywhere in the country (nearby ranks higher)</option></select></div>
@@ -785,12 +785,12 @@ function SearchEditor({ search, setSearch, say, resume }) {
         <button class="btn small" onClick=${() => set((n) => { n.locations.search_locations.splice(i, 1); })}>Remove</button></div>`)}
       <button class="btn small" onClick=${() => set((n) => { n.locations.search_locations = [...(n.locations.search_locations || []), { place: "", radius_km: 50 }]; })}>Add a location</button>
       <div style="margin-top:12px">
-        <label class="row"><input type="checkbox" checked=${(L.country || "CA") === "CA" ? L.include_us_remote !== false : L.include_ca_remote !== false}
+        ${["CA", "US"].includes(L.country || "CA") ? html`<label class="row"><input type="checkbox" checked=${(L.country || "CA") === "CA" ? L.include_us_remote !== false : L.include_ca_remote !== false}
           onChange=${(e) => set((n) => { if ((L.country || "CA") === "CA") n.locations.include_us_remote = e.target.checked; else n.locations.include_ca_remote = e.target.checked; })} />
           Include remote jobs from ${(L.country || "CA") === "CA" ? "the US" : "Canada"}</label>
         <label class="row"><input type="checkbox" checked=${!!L[(L.country || "CA") === "CA" ? "include_us_onsite" : "include_ca_onsite"]}
           onChange=${(e) => set((n) => { n.locations[(L.country || "CA") === "CA" ? "include_us_onsite" : "include_ca_onsite"] = e.target.checked; })} />
-          Include on-site jobs there too (needs a work permit)</label>
+          Include on-site jobs there too (needs a work permit)</label>` : html`<p class="hint">Remote jobs open worldwide are included; ones limited to other countries are left out.</p>`}
       </div>
     </div>
 

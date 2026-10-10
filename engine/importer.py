@@ -224,7 +224,11 @@ def setup_search(cfg, resume):
     loc = resume.get("contact", {}).get("location", "")
     if loc:
         cfg.setdefault("locations", {})["search_locations"] = [{"place": loc, "radius_km": 50}]
-        if re.search(r"\b(usa|united states|us)\b", loc, re.I) or re.search(r",\s*[A-Z]{2}\s*$", loc) and not re.search(
+        from util import classify_location
+        where = classify_location(loc)[0]
+        if where in ("AU", "IN"):
+            cfg["locations"]["country"] = where
+        elif re.search(r"\b(usa|united states|us)\b", loc, re.I) or re.search(r",\s*[A-Z]{2}\s*$", loc) and not re.search(
                 r",\s*(ON|QC|BC|AB|MB|SK|NS|NB|NL|PE)\s*$", loc):
             cfg["locations"]["country"] = "US"
     cfg["title_terms"]["required"] = []

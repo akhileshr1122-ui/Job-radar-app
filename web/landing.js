@@ -208,7 +208,7 @@ function Coverage({ go, stats }) {
     <section class="wrap section covgrid">${groups.map(([t, d, c]) => html`<article><div class="cov-n">${c ? n(c) : ""}</div><h3>${t}</h3><p>${d}</p></article>`)}</section>
     <section class="wrap section split top">
       <div><h2>What gets filtered out</h2><p>The same job posted on five sites shows up once, from the best source. Staffing-agency reposts, ads asking for LMIA or temporary foreign workers, postings with no company, and listings that have stayed open for weeks are dropped before you see them. You can switch any of these filters off.</p></div>
-      <div><h2>Canada and the US</h2><p>Searches follow your city and radius, or the whole country. US roles are included when they're remote and open to you; on-site US roles only if you ask for them.</p></div>
+      <div><h2>Canada, the US, Australia and India</h2><p>Searches follow your city and radius, or the whole country. Remote roles open worldwide are included; ones limited to other countries are left out. In Canada and the US you can also include each other's remote roles.</p></div>
     </section>
     <p class="wrap fine-dark">Job Radar links to each original posting and never re-publishes full job ads. Applications are always submitted by you on the employer's or board's own site.</p>
     <${CTA} go=${go} />`;
@@ -234,7 +234,7 @@ function Faq({ go }) {
     ["Does it apply to jobs for me?", "No. It prepares the resume and cover letter and opens the application. You review and submit, so nothing goes out in your name without you seeing it."],
     ["Where do the jobs come from?", "Job boards and search engines, remote job boards, and employers' own career pages. See the Coverage page for the full list."],
     ["Will it make things up on my resume?", "No. It only uses your real experience, and any change that adds a number not in your profile is rejected. You see every change highlighted before you apply."],
-    ["Which countries does it cover?", "Canada and the US. You choose cities and a radius, or the whole country, and whether to include remote roles."],
+    ["Which countries does it cover?", "Canada, the US, Australia and India. You choose cities and a radius, or the whole country, and whether to include remote roles."],
     ["How do I get in?", "Job Radar is invite-only. Request an invite with the email you'll sign in with; you'll be able to sign in once you're added."],
     ["Can I use it on my phone?", "Yes. Open it in your phone's browser and add it to your home screen; it opens like an app."],
   ];
@@ -285,7 +285,7 @@ export function Landing({ api, me, say }) {
             <button class="btn amber big" onClick=${() => go("", "invite")}>Request an invite</button>
             <button class="btn ghost big" onClick=${() => go("product")}>See how it works</button>
           </div>
-          <p class="fine">Invite-only. Canada and the US. Free to start.</p>
+          <p class="fine">Invite-only. Canada, the US, Australia and India. Free to start.</p>
         </div>
         <${Radar} />
       </div>` : null}
