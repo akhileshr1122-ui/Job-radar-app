@@ -87,7 +87,12 @@ def country_wide(cfg):
 
 
 def key_queries(cfg, n):
-    return cfg.get("queries", [])[:n]
+    """The n best search phrases: ones containing a must-have title word first (sources with call limits only use a few)."""
+    qs = list(dict.fromkeys(q.strip() for q in cfg.get("queries", []) if q and q.strip()))
+    req = [t.lower() for t in (cfg.get("title_terms", {}).get("required") or [])]
+    if req:
+        qs.sort(key=lambda q: not any(t in q.lower() for t in req))
+    return qs[:n]
 
 
 def query_words(cfg, n=8):

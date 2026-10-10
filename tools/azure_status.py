@@ -100,6 +100,6 @@ for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
         tally["kept"] += 1
         kept_src[j.get("source")] += 1
     acct = get(f"users/{uid}/account.json") or {}
-    note(f"WHY {acct.get('name', uid)}: required={req[:12]} places={[p for p, _, _ in cfg['_place_points']]} mode={locs.get('mode')} "
+    note(f"WHY {acct.get('name', uid)}: resume location={resume.get('contact', {}).get('location')!r} search_locations={locs.get('search_locations')} key queries={S.key_queries(cfg, 6)} required={req[:12]} places={[p for p, _, _ in cfg['_place_points']]} mode={locs.get('mode')} "
          f"country={locs.get('country')} min={cfg['min_score_to_save']} | " + "; ".join(f"{k}: {v}" for k, v in tally.most_common())
          + f" | low scores by band {dict(sorted(near_miss.items()))} | kept by source {dict(kept_src)}")

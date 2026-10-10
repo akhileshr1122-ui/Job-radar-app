@@ -153,7 +153,8 @@ async function handle(req) {
         try { JSON.parse(buf.toString("utf8")); } catch { return reply(400, { error: "That isn't valid JSON." }); }
       }
       await writeBuf(home + path, buf, TYPES[path.split(".").pop()] || "application/octet-stream");
-      if (path.startsWith("requests/") || path.startsWith("profile/")) await enqueue(uid, false);
+      if (path.startsWith("profile/")) await enqueue(uid, true); // new settings or resume: match the job pool again
+      else if (path.startsWith("requests/")) await enqueue(uid, false);
       return reply(200, { ok: true });
     }
   }

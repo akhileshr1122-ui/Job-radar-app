@@ -3,6 +3,11 @@ name: Azure status
 # Shows what the hosted Job Radar pulled (shared job pool and each person's matches) in the run summary.
 on:
   workflow_dispatch:
+    inputs:
+      search_everyone:
+        description: "Also start a search for everybody now"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,6 +30,12 @@ jobs:
           export STORAGE_CONNECTION=$(az storage account show-connection-string -g "$RG" -n "$acct" -o tsv)
           echo "::add-mask::$STORAGE_CONNECTION"
           python tools/azure_status.py
+          if [ "${{ inputs.search_everyone }}" = "true" ]; then
+            for u in $(az storage blob list -c jobradar --prefix users/ --delimiter / --connection-string "$STORAGE_CONNECTION" --query "[].name" -o tsv); do
+              uid=$(echo "$u" | cut -d/ -f2)
+              az storage message put -q jobradar-runs --content "{\"uid\": \"$uid\", \"search\": true}" --connection-string "$STORAGE_CONNECTION" -o none && echo "::notice::Search queued for $uid"
+            done
+          fi
           echo "::notice::Queue job runs: $(az containerapp job execution list -n jobradar-queue -g "$RG" --query "[0:5].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"
           echo "::notice::Queue length: $(az storage message peek -q jobradar-runs --num-messages 32 --connection-string "$STORAGE_CONNECTION" --query 'length(@)' -o tsv 2>/dev/null)"
           echo "::notice::Bulk job runs: $(az containerapp job execution list -n jobradar-bulk -g "$RG" --query "[0:3].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"
