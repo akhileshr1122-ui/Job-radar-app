@@ -49,7 +49,6 @@ for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
         note(f"LOG {acct.get('name', uid)}: {log}")
     except Exception:
         pass
-sys.exit(0)
 
 
 # ---------------------------------------------------------------- why jobs are (not) kept, per person
