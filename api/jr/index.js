@@ -109,6 +109,11 @@ async function handle(req) {
     return reply(200, { ok: true });
   }
 
+  if (rest === "public-stats") {
+    const st = (await readJson("shared/stats.json", null)) || {};
+    return reply(200, { updated: st.updated || null, postings: st.postings || 0, sources: st.sources || 0, companies: st.companies || 0, groups: st.groups || {} });
+  }
+
   if (rest === "me") {
     if (!p) return reply(200, { signedIn: false });
     const uid = uidOf(p);
@@ -219,7 +224,20 @@ async function handle(req) {
         const acct = await readJson(`users/${id}/account.json`, {});
         const st = await readJson(`users/${id}/data/run_status.json`, {});
         const jobs = await readJson(`users/${id}/data/jobs.json`, null);
-        users.push({ id, name: acct?.name || id, provider: acct?.provider || "", last_seen: acct?.last_seen || "", run: st || {}, jobs: jobs?.count ?? null });
+        const usage = (await readJson(`users/${id}/data/usage.json`, {})) || {};
+        const state = (await readJson(`users/${id}/user/state.json`, {})) || {};
+        const rep = (await readJson(`users/${id}/data/report.json`, {})) || {};
+        const list = jobs?.jobs || [];
+        const statuses = Object.values(state.statuses || {}).map((x) => (typeof x === "string" ? x : x.status));
+        const n = (st) => statuses.filter((x) => x === st).length;
+        const total = {};
+        for (const mo of Object.values(usage)) for (const [k, v] of Object.entries(mo)) if (typeof v === "number") total[k] = Math.round(((total[k] || 0) + v) * 10000) / 10000;
+        const month = usage[new Date().toISOString().slice(0, 7)] || {};
+        users.push({ id, name: acct?.name || id, provider: acct?.provider || "", last_seen: acct?.last_seen || "", first_seen: acct?.first_seen || "",
+          run: st || {}, jobs: jobs?.count ?? null, new_last: jobs?.new_this_run ?? null,
+          resumes_ready: list.filter((j) => j.resume_pdf).length, ai_resumes_ready: list.filter((j) => j.tailor_method === "claude").length,
+          preps: list.filter((j) => j.prep).length, saved: n("saved"), applied: n("applied") + n("interview") + n("offer") + n("rejected"),
+          interviews: n("interview"), offers: n("offer"), month, total, ai_error: rep.ai_error || "", scanned_last: rep.raw ?? null });
       }
       const pool = await box().getBlobClient("shared/pool.json").getProperties().catch(() => null);
       return reply(200, { people: allow.people, admins: admins(), users, requests: (await requestsList()).items, pool_updated: pool?.lastModified || null });

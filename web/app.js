@@ -2,9 +2,10 @@ import { html, render, useState, useEffect, useMemo, useRef, useCallback } from 
 import gh from "./backend.js";
 import { resumePdf, fileName } from "./pdf.js";
 import { BOARD_GROUPS } from "./boards.js";
-import { PIPE, LABEL, scoreColor, clone, lines, commas, age, ageHours, store, restore, copy, Ring, ago } from "./ui.js";
+import { PIPE, LABEL, scoreColor, clone, lines, commas, age, ageHours, store, restore, copy, Ring, ago, nextRun, clock, RadarPulse } from "./ui.js";
 import { Landing } from "./landing.js";
 import { Home, Tracker, Documents, Insights, PlanPage, AdminPage } from "./pages.js";
+import { Coverage, UsagePage } from "./dash.js";
 import { planById } from "./plans.js";
 
 // ------------------------------------------------------------------ app
@@ -82,10 +83,30 @@ function App() {
     try {
       const r = await gh.runSearch();
       say(`Search started. New jobs arrive in about ${gh.mode === "azure" ? "5–10" : "10–15"} minutes.${r?.left != null ? ` ${r.left} on-demand searches left today.` : ""}`);
-      gh.lastRun().then(setRun);
+      requested.current = Date.now();
+      setRun({ state: "queued", status: "queued" });
     } catch (e) { say(e.message); }
   }, [say]);
   useEffect(() => { if (ready) gh.lastRun().then(setRun); }, [ready]);
+  // while a search is queued or running: poll, show the radar, refresh the jobs when it finishes
+  const isActive = (r) => !!r && (r.state === "queued" || r.state === "running" || r.status === "in_progress" || r.status === "queued");
+  const active = isActive(run);
+  const requested = useRef(0);
+  useEffect(() => {
+    if (!ready || !active) return;
+    const t = setInterval(async () => {
+      const r = await gh.lastRun();
+      const fresh = r && Date.parse(r.created_at || r.queued || r.updated_at || 0) >= requested.current - 10000;
+      if (isActive(r)) { setRun(r); return; }
+      if (!fresh && Date.now() - requested.current < 180000) return; // the new run hasn't shown up yet
+      setRun(r);
+      refresh();
+      say("Search finished. Your jobs are up to date.");
+    }, 15000);
+    return () => clearInterval(t);
+  }, [ready, active]);
+  const [, tick] = useState(0);
+  useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
 
   if (!ready && gh.mode === "azure") return html`<${Landing} api=${gh} me=${gh.me} say=${say} />
     ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}`;
@@ -108,9 +129,9 @@ function App() {
     applied: jobs.filter((j) => PIPE.includes(statuses[j.id]?.status)).length,
   };
   const tabs = [["home", "Home"], ["jobs", "Jobs", counts.inbox], ["tracker", "Tracker"], ["resumes", "Resumes"], ["insights", "Insights"],
-    ["boards", "Boards"], ["profile", "Profile"], ...(gh.mode === "azure" ? [["plan", "Plan"]] : []), ["settings", "Settings"],
-    ...(gh.me?.admin ? [["admin", "Admin"]] : [])];
-  const current = tabs.some(([r]) => r === route) || route === "search" ? route : "home";
+    ["coverage", "Coverage"], ["profile", "Profile"], ...(gh.mode === "azure" ? [["plan", "Plan"]] : []), ["settings", "Settings"],
+    ...(gh.me?.admin ? [["usage", "Usage"], ["admin", "Admin"]] : [])];
+  const current = route === "boards" ? "coverage" : tabs.some(([r]) => r === route) || route === "search" ? route : "home";
 
   let main;
   if (needsResume && !["settings", "plan", "admin"].includes(current)) main = html`<${Onboard} ...${ctx} />`;
@@ -123,14 +144,16 @@ function App() {
   else if (current === "tracker") main = html`<${Tracker} ...${ctx} />`;
   else if (current === "resumes") main = html`<${Documents} ...${ctx} />`;
   else if (current === "insights") main = html`<${Insights} ...${ctx} />`;
-  else if (current === "boards") main = html`<${Boards} ...${ctx} />`;
+  else if (current === "coverage") main = html`<${Coverage} ...${ctx} showBoards=${gh.mode !== "azure" || !!gh.me?.admin} BoardsView=${Boards} />`;
+  else if (current === "usage") main = html`<${UsagePage} say=${say} />`;
   else if (current === "profile" || current === "search") main = html`<${ProfileTabs} sub=${current} ...${ctx} />`;
   else if (current === "plan") main = html`<${PlanPage} say=${say} />`;
   else if (current === "admin") main = html`<${AdminPage} say=${say} />`;
-  else if (gh.mode === "azure") main = html`<${HostedSettings} ...${ctx} />`;
-  else main = html`<${Settings} ...${ctx} onDisconnect=${() => { gh.forget(); setReady(false); }} />`;
+  else if (gh.mode === "azure") main = html`<${HostedSettings} ...${ctx} appSearch=${searchNow} />`;
+  else main = html`<${Settings} ...${ctx} appSearch=${searchNow} onDisconnect=${() => { gh.forget(); setReady(false); }} />`;
 
-  const searched = file?.updated ? `Searched ${ago(file.updated)}` : "Your job search";
+  const next = nextRun(gh.mode === "azure" ? 15 : 17);
+  const searched = active ? "Searching now…" : `${file?.updated ? `Searched ${ago(file.updated)}, ` : ""}next ${clock(next)}`;
   return html`<div class="app">
     <header class="appbar">
       <div class="appbar-top">
@@ -142,6 +165,9 @@ function App() {
           : html`<button class="btn light small" onClick=${refresh}>${loading ? "Refreshing…" : "Refresh"}</button>`}
         <${AccountMenu} setRoute=${setRoute} refresh=${refresh} loading=${loading} onAdd=${() => setAdding(true)} onDisconnect=${() => { gh.forget(); setReady(false); }} />
       </div>
+      ${active ? html`<div class="searching" role="status"><${RadarPulse} size=${30} />
+        <span><b>${run.state === "queued" || run.status === "queued" ? "Search starting" : "Searching job boards and company career pages"}</b>
+          <small>New matches and tailored resumes appear here as soon as it finishes, usually 5–10 minutes.</small></span></div>` : null}
       <nav class="tabbar" aria-label="Sections">
         ${tabs.map(([r, label, n]) => html`<button class="tab" aria-current=${current === r || (r === "profile" && current === "search") ? "page" : null}
           onClick=${() => setRoute(r)}>${label}${n ? html`<span class="count">${n}</span>` : null}</button>`)}
@@ -153,7 +179,7 @@ function App() {
   </div>`;
 }
 
-const ROUTES = ["home", "jobs", "tracker", "resumes", "insights", "boards", "profile", "search", "plan", "settings", "admin"];
+const ROUTES = ["home", "jobs", "tracker", "resumes", "insights", "boards", "coverage", "profile", "search", "plan", "settings", "usage", "admin"];
 function routeFromHash() { const r = location.hash.slice(1); return ROUTES.includes(r) ? r : null; }
 
 function AccountMenu({ setRoute, refresh, loading, onAdd, onDisconnect }) {
@@ -885,7 +911,7 @@ function AiSetup({ repoUrl, say, hosted }) {
 
 // ------------------------------------------------------------------ settings
 
-function Settings({ report, say, onDisconnect, file }) {
+function Settings({ report, say, onDisconnect, file, appSearch }) {
   const [run, setRun] = useState(null);
   const [updating, setUpdating] = useState(false);
   async function update() {
@@ -900,7 +926,7 @@ function Settings({ report, say, onDisconnect, file }) {
   }
   useEffect(() => { gh.lastRun().then(setRun); }, []);
   const repoUrl = `https://github.com/${gh.conn.owner}/${gh.conn.repo}`;
-  async function searchNow() { try { await gh.runSearch(); say("Search started. New jobs arrive in about 10–15 minutes."); } catch (e) { say(e.message); } }
+  async function searchNow() { await appSearch(); }
   const src = report?.sources || {};
   return html`<div class="page form">
     <h2>Settings</h2>
@@ -1001,15 +1027,13 @@ function ImportGitHub({ say, onDone }) {
 }
 
 
-function HostedSettings({ report, say, file }) {
+function HostedSettings({ report, say, file, appSearch }) {
   const [run, setRun] = useState(null);
   const [sec, setSec] = useState(null);
   const [tok, setTok] = useState("");
   const [key, setKey] = useState("");
   useEffect(() => { gh.lastRun().then(setRun); gh.secrets().then(setSec).catch(() => {}); }, []);
-  async function searchNow() {
-    try { await gh.runSearch(); say("Search started. New jobs arrive in about 5–10 minutes."); setRun(await gh.lastRun()); } catch (e) { say(e.message); }
-  }
+  async function searchNow() { await appSearch(); setRun(await gh.lastRun()); }
   async function saveSecret(body, msg) {
     try { setSec(await gh.secrets(body)); setTok(""); setKey(""); say(msg); } catch (e) { say(e.message); }
   }

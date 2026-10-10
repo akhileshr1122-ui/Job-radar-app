@@ -31,6 +31,9 @@ param joobleKey string = ''
 @secure()
 param rapidApiKey string = ''
 
+@description('Model used for AI resumes paid by the shared key (Plus and Pro plans).')
+param sharedAiModel string = 'claude-haiku-4-5-20251001'
+
 @description('Optional: an Anthropic API key that pays for AI resumes of people on the Plus and Pro plans.')
 @secure()
 param sharedAnthropicKey string = ''
@@ -127,6 +130,7 @@ var runnerEnv = concat([
   { name: 'ENGINE_ZIP', value: engineZip }
   { name: 'PYTHONUNBUFFERED', value: '1' }
   { name: 'ADMIN_USERS', value: adminUsers }
+  { name: 'SHARED_AI_MODEL', value: sharedAiModel }
 ], optionalEnv)
 
 // Download the latest engine, install it, run. Always current with the public repo; no image to build.

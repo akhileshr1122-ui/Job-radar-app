@@ -30,3 +30,28 @@ export function Ring({ score, big }) {
 
 export const ago = (t) => (age({ posted: t }) === "now" ? "just now" : age({ posted: t }) + " ago");
 export const firstName = (resume) => ((resume?.contact?.name || "").trim().split(/\s+/)[0] || "");
+
+/** Next automatic search: every 4 hours at the given minute past the hour (UTC hours 0,4,8,…). */
+export function nextRun(minute) {
+  const now = new Date();
+  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, minute, 0));
+  while (t <= now) t.setUTCHours(t.getUTCHours() + 4);
+  return t;
+}
+export const clock = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+export function untilText(d) {
+  const m = Math.max(0, Math.round((d - Date.now()) / 60000));
+  return m < 60 ? `in ${m} min` : `in ${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+/** Small radar with a turning sweep, used while a search runs. */
+export function RadarPulse({ size = 44 }) {
+  return html`<svg class="pulse" width=${size} height=${size} viewBox="0 0 100 100" aria-hidden="true">
+    <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-opacity=".35" />
+    <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-opacity=".25" />
+    <circle cx="50" cy="50" r="14" fill="none" stroke="currentColor" stroke-opacity=".2" />
+    <g class="pulse-sweep"><path d="M50 50 L50 4 A46 46 0 0 1 82.5 17.5 Z" fill="currentColor" fill-opacity=".35" /></g>
+    <circle class="pulse-blip" cx="68" cy="34" r="4" fill="var(--amber)" />
+    <circle class="pulse-blip b2" cx="34" cy="64" r="3.5" fill="var(--amber)" />
+  </svg>`;
+}

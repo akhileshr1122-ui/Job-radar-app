@@ -1,7 +1,7 @@
 // Home, Tracker, Resumes, Insights, Plan and Admin tabs.
 import { html, useState, useEffect, useMemo } from "./vendor/preact-htm.js";
 import gh from "./backend.js";
-import { PIPE, LABEL, Ring, age, ago, copy, firstName } from "./ui.js";
+import { PIPE, LABEL, Ring, age, ago, copy, firstName, RadarPulse, nextRun, clock, untilText } from "./ui.js";
 import { PLANS, planById, priceText } from "./plans.js";
 import { resumePdf, fileName } from "./pdf.js";
 
@@ -53,6 +53,11 @@ export function Home({ jobs, statuses, file, resume, setRoute, openJob, say, sea
         <p class="hint">${file?.updated ? `Last search ${ago(file.updated)}. ` : ""}${run?.state === "running" ? "A search is running now." : run?.state === "queued" ? "A search starts in a moment." : "Searches run by themselves every 4 hours."}</p></div>
     </div>
 
+    ${run && ["queued", "running", "in_progress"].some((x) => run.state === x || run.status === x) ? html`<section class="scanning" role="status">
+      <${RadarPulse} size=${120} />
+      <div><h2>Searching for you now</h2>
+        <p>Reading job boards, remote boards and employers' career pages, scoring every posting against your profile and writing resumes for the best matches. This usually takes 5–10 minutes; you can keep using Job Radar meanwhile.</p></div>
+    </section>` : html`<p class="nextline">Next automatic search ${untilText(nextRun(gh.mode === "azure" ? 15 : 17))}, at ${clock(nextRun(gh.mode === "azure" ? 15 : 17))}.</p>`}
     <div class="stats">
       <button class="stat" onClick=${() => setRoute("jobs")}><b>${newIds.size}</b><span>new in the last search</span></button>
       <button class="stat" onClick=${() => setRoute("jobs")}><b>${inbox.length}</b><span>waiting in your inbox</span></button>

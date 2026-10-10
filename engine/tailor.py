@@ -168,6 +168,20 @@ def _slim(resume):
     return out
 
 
+# Token use for this run (shown on the admin usage page) and a stop switch when the AI key/token is rejected.
+USAGE = {"ai_calls": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 0.0}
+AI_ERROR = {"msg": ""}
+
+
+def _add_usage(u, cost=0.0):
+    USAGE["ai_calls"] += 1
+    USAGE["input_tokens"] += int(u.get("input_tokens") or 0)
+    USAGE["output_tokens"] += int(u.get("output_tokens") or 0)
+    USAGE["cache_read_tokens"] += int(u.get("cache_read_input_tokens") or 0)
+    USAGE["cache_write_tokens"] += int(u.get("cache_creation_input_tokens") or 0)
+    USAGE["cost_usd"] = round(USAGE["cost_usd"] + float(cost or 0), 4)
+
+
 def ai_available():
     """AI tailoring works with either a Claude API key or a Claude subscription token (Pro/Max via Claude Code)."""
     return bool((os.environ.get("ANTHROPIC_API_KEY") or "").strip() or (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip())
@@ -184,8 +198,12 @@ def _call_api(system, user, cfg, max_tokens):
                   "messages": [{"role": "user", "content": user}]})
         if r.status_code != 200:
             print(f"  claude {r.status_code}: {r.text[:300]}")
+            if r.status_code in (401, 403):
+                AI_ERROR["msg"] = f"Anthropic API key rejected ({r.status_code})"
             return None
-        return "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+        body = r.json()
+        _add_usage(body.get("usage") or {})
+        return "".join(b.get("text", "") for b in body.get("content", []) if b.get("type") == "text")
     except (requests.RequestException, ValueError) as e:
         print(f"  claude error: {e!r}")
         return None
@@ -206,19 +224,32 @@ def _call_subscription(system, user, cfg):
         with open(sp, "w", encoding="utf-8") as fh:
             fh.write(system)
         cmd = [exe, "-p", user, "--system-prompt-file", sp, "--tools", "", "--max-turns", "1",
-               "--output-format", "text", "--no-session-persistence", "--model", cfg.get("claude_cli_model", "sonnet")]
+               "--output-format", "json", "--no-session-persistence", "--model", cfg.get("claude_cli_model", "sonnet")]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env, cwd=tmp)
         except (subprocess.TimeoutExpired, OSError) as e:
             print(f"  claude CLI error: {e!r}")
             return None
-    if r.returncode != 0:
-        print(f"  claude CLI exit {r.returncode}: {(r.stderr or r.stdout)[:300]}")
+    out = r.stdout or ""
+    try:
+        body = json.loads(out)
+    except ValueError:
+        body = None
+    if r.returncode != 0 or (isinstance(body, dict) and body.get("is_error")):
+        msg = (body.get("result") if isinstance(body, dict) else "") or r.stderr or out
+        print(f"  claude CLI exit {r.returncode}: {str(msg)[:300]}")
+        if re.search(r"401|authenticat|invalid bearer|expired", str(msg), re.I):
+            AI_ERROR["msg"] = "Claude token rejected: run claude setup-token again and paste the new token"
         return None
-    return r.stdout
+    if isinstance(body, dict):
+        _add_usage(body.get("usage") or {}, body.get("total_cost_usd"))
+        return body.get("result") or ""
+    return out
 
 
 def call_claude(system, user, cfg, max_tokens=3000):
+    if AI_ERROR["msg"]:
+        return None  # key/token already rejected this run: don't keep trying
     if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
         return _call_api(system, user, cfg, max_tokens)
     if (os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip():

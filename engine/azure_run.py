@@ -194,6 +194,7 @@ def user_env(uid):
         ensure_claude_cli(env)
     elif not sec.get("anthropic_key") and limits["shared_ai"] and os.environ.get("SHARED_ANTHROPIC_API_KEY"):
         env["ANTHROPIC_API_KEY"] = os.environ["SHARED_ANTHROPIC_API_KEY"]  # AI included in the plan
+        env["JR_MODEL"] = os.environ.get("SHARED_AI_MODEL") or "claude-haiku-4-5-20251001"  # cheaper model on your key
     return env
 
 
@@ -348,6 +349,18 @@ def bulk():
     with open(pool_path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False)
     box.upload_blob("shared/pool.json", open(pool_path, "rb"), overwrite=True)
+    # public numbers for the homepage (counts only, no postings)
+    by = {}
+    for j in uniq:
+        by[j.get("source") or "?"] = by.get(j.get("source") or "?", 0) + 1
+    remote = {"weworkremotely", "remoteok", "himalayas", "jobicy", "remotive", "workingnomads"}
+    career = {"greenhouse", "lever", "ashby", "workable", "smartrecruiters"}
+    brands = {"amazon.jobs", "workday"}
+    groups = {"remote": sum(v for k, v in by.items() if k in remote), "career": sum(v for k, v in by.items() if k in career),
+              "brands": sum(v for k, v in by.items() if k in brands)}
+    groups["boards"] = len(uniq) - sum(groups.values())
+    put_json("shared/stats.json", {"updated": now(), "postings": len(uniq), "sources": len([k for k, v in by.items() if v]),
+                                   "companies": len({(j.get("company") or "").strip().lower() for j in uniq if j.get("company")}), "groups": groups})
     put_json("shared/ats_cache.json", cache)
     put_json("shared/jsearch_state.json", jstate)
     log(f"pool saved: {len(uniq)} postings")

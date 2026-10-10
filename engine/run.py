@@ -31,6 +31,7 @@ import render  # noqa: E402
 import sources  # noqa: E402
 from score import score  # noqa: E402
 import importer  # noqa: E402
+import tailor as tailor_mod  # noqa: E402
 from tailor import ai_available, all_skills, interview_prep, keyword_tailor, tailor  # noqa: E402
 from util import classify_location, geocache, geocode, job_id, load_geocache, norm, now_iso  # noqa: E402
 
@@ -200,6 +201,8 @@ def main(argv=None):
 
     for k, v in limits.items():
         cfg[k] = min(cfg.get(k, v), v)
+    if os.environ.get("JR_MODEL"):
+        cfg["claude_model"] = os.environ["JR_MODEL"]
 
     # ---- data brought over from a GitHub Job Radar (hosted mode): jobs list + tailored resumes, rendered here
     imp_dir = os.path.join(DATA, "imported")
@@ -370,12 +373,14 @@ def main(argv=None):
     manual_todo = [j for j in todo if j.get("manual") or j["id"] in retailor_ids]
     todo = manual_todo + [j for j in todo if j not in manual_todo][: cfg["max_tailor_per_run"]]
     done = 0
+    counts = {"ai_resumes": 0, "keyword_resumes": 0, "edits": 0, "prep_sheets": 0}
     for j in todo:
         st = status_of.get(j["id"])
         important = j.get("manual") or st in TRACKED or j["id"] in retailor_ids
         use_ai = have_ai and (important or j["score"] >= cfg.get("min_score_for_ai", 65)) and (ai_budget > 0 or important)
         print(f"tailoring {j['score']:>3} {'AI ' if use_ai else 'kw '} {j['title']} @ {j['company']}")
         t = tailor(dict(j), resume, cfg, use_claude=use_ai)
+        counts["ai_resumes" if t["method"] == "claude" else "keyword_resumes"] += 1
         if t["method"] == "claude":
             ai_budget -= 1
             run_state["ai_used"] = run_state.get("ai_used", 0) + 1
@@ -416,6 +421,7 @@ def main(argv=None):
         save(stem + ".json", t)
         j.update(resume_pdf=f"data/resumes/{j['id']}.pdf", resume_docx=f"data/resumes/{j['id']}.docx", headline=t.get("headline", ""),
                  summary=t.get("summary", ""), cover_letter=t.get("cover_letter", ""), tailor_method="edited", profile_hash=profile_hash)
+        counts["edits"] += 1
         print(f"saved edits for {j['title']} @ {j['company']}")
 
     # ---- interview prep requests
@@ -434,6 +440,8 @@ def main(argv=None):
             fh.write(md)
         j["prep"] = f"data/prep/{j['id']}.md"
         prep_done += 1
+        if not md.startswith("# Interview prep\n\nInterview prep needs AI"):
+            counts["prep_sheets"] += 1
 
     # ---- base resume (default selection) always available
     if profile_hash != run_state.get("base_hash") or not os.path.exists(os.path.join(RES_DIR, "base.json")):
@@ -468,10 +476,27 @@ def main(argv=None):
     save(os.path.join(DATA, "ats_cache.json"), cache)
     save(os.path.join(DATA, "run_state.json"), run_state)
     save(os.path.join(DATA, "geocache.json"), geocache())
+    # ---- usage per month (admin usage page) and search history (coverage dashboard)
+    usage = load(os.path.join(DATA, "usage.json"), {})
+    m = usage.setdefault(started[:7], {})
+    for k, v in list(counts.items()) + [(k, v) for k, v in tailor_mod.USAGE.items()]:
+        m[k] = round(m.get(k, 0) + v, 4)
+    m["cover_letters"] = m.get("ai_resumes", 0) + m.get("keyword_resumes", 0)
     if not args.requests_only:
+        m["searches"] = m.get("searches", 0) + 1
+    m["updated"] = started
+    save(os.path.join(DATA, "usage.json"), dict(sorted(usage.items())[-12:]))
+    if not args.requests_only:
+        hist = load(os.path.join(DATA, "history.json"), [])
+        by_src = {}
+        for j in raw:
+            by_src[j.get("source", "?")] = by_src.get(j.get("source", "?"), 0) + 1
+        hist.append({"at": started, "scanned": len(raw), "passed": kept, "listed": len(jobs), "new": new_count,
+                     "companies": len({canon_company(j.get("company", "")) for j in raw if j.get("company")}), "sources": by_src})
+        save(os.path.join(DATA, "history.json"), hist[-120:])
         save(os.path.join(DATA, "report.json"), {"updated": started, "raw": len(raw), "passed": kept, "unique": len(best),
                                                  "new": new_count, "tailored_this_run": done, "ai_used_today": run_state.get("ai_used", 0),
-                                                 "ai_enabled": have_ai, "sources": report})
+                                                 "ai_enabled": have_ai, "ai_error": tailor_mod.AI_ERROR["msg"], "sources": report})
     print(f"done: {len(jobs)} jobs listed, {new_count} new, {done} tailored, {prep_done} prep, {len(reqs)} requests")
 
 

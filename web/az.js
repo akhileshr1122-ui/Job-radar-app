@@ -65,13 +65,18 @@ export async function lastRun() {
     const s = await (await call(`${API}/run`)).json();
     if (!s.state) return null;
     return { status: s.state === "finished" ? "completed" : s.state, conclusion: s.ok === false ? "failure" : "success",
-      updated_at: s.finished || s.started || s.queued, state: s.state, note: s.note || "", kind: s.kind };
+      updated_at: s.finished || s.started || s.queued, created_at: s.queued || s.started, state: s.state, note: s.note || "", kind: s.kind };
   } catch { return null; }
 }
 
 export async function secrets(update) {
   const opts = update ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(update) } : {};
   return (await call(`${API}/secrets`, opts)).json();
+}
+
+export async function publicStats() {
+  const r = await fetch(`${API}/public-stats`, { cache: "no-store" });
+  return r.ok ? r.json() : null;
 }
 
 export async function requestAccess(body) {
