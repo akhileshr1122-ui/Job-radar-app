@@ -278,11 +278,15 @@ def union_cfg(cfgs, template):
     u = json.loads(json.dumps(template))
     u["queries"] = list(dict.fromkeys(q for c in cfgs for q in c.get("queries", [])))
     u["title_terms"]["required"] = list(dict.fromkeys(t for c in cfgs for t in c["title_terms"]["required"]))
+    try:
+        extra = json.load(open(os.path.join(HERE, "..", "profile", "companies_default.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        extra = {}
     u.setdefault("ats_companies", {})["candidates"] = list(dict.fromkeys(
-        list(template.get("ats_companies", {}).get("candidates", [])) +
+        list(template.get("ats_companies", {}).get("candidates", [])) + extra.get("ats_candidates", []) +
         [s for c in cfgs for s in c.get("ats_companies", {}).get("candidates", [])]))
     u.setdefault("workday_sites", {})["urls"] = list(dict.fromkeys(
-        [x for c in cfgs for x in c.get("workday_sites", {}).get("urls", [])]))
+        extra.get("workday_urls", []) + [x for c in cfgs for x in c.get("workday_sites", {}).get("urls", [])]))
     u["sources"] = {name: any(sources.source_on(c, name) for c in cfgs)
                     for name in ["company_boards"] + [f.__name__ for f in sources.SHARED_SOURCES]}
     return u
