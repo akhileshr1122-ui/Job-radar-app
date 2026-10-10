@@ -25,4 +25,6 @@ jobs:
           export STORAGE_CONNECTION=$(az storage account show-connection-string -g "$RG" -n "$acct" -o tsv)
           echo "::add-mask::$STORAGE_CONNECTION"
           python tools/azure_status.py
+          echo "::notice::Queue job runs: $(az containerapp job execution list -n jobradar-queue -g "$RG" --query "[0:5].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"
+          echo "::notice::Queue length: $(az storage message peek -q jobradar-runs --num-messages 32 --connection-string "$STORAGE_CONNECTION" --query 'length(@)' -o tsv 2>/dev/null)"
           echo "::notice::Bulk job runs: $(az containerapp job execution list -n jobradar-bulk -g "$RG" --query "[0:3].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"

@@ -41,6 +41,7 @@ for item in box.walk_blobs(name_starts_with="users/", delimiter="/"):
     r = get(f"users/{uid}/data/report.json") or {}
     st = get(f"users/{uid}/data/run_status.json") or {}
     cfg = get(f"users/{uid}/profile/search.json") or {}
+    note(f"RUNSTATUS {acct.get('name', uid)}: {json.dumps(st)}")
     note(f"USER {acct.get('name', uid)}: {jf.get('count', 0)} jobs listed, {jf.get('new_this_run', 0)} new; last run {st.get('state')} ok={st.get('ok')} {st.get('finished', '')} "
          f"{st.get('note', '')}; checked {r.get('raw')} passed {r.get('passed')} tailored {r.get('tailored_this_run')}; queries {cfg.get('queries', [])[:6]}; "
          f"companies {len(cfg.get('ats_companies', {}).get('candidates', []))}")
