@@ -1,7 +1,7 @@
 name: Deploy to Azure
 
 # Hosted Job Radar for an invite-only group. Needs one secret, AZURE_CREDENTIALS (see docs/AZURE.md),
-# and the variable JR_ADMIN_USERS (your sign-in email). Job-source keys are optional secrets.
+# and the secret JR_ADMIN_USERS (your sign-in email; a secret so it stays out of the public logs). Job-source keys are optional secrets.
 
 on:
   push:
@@ -29,10 +29,10 @@ jobs:
       - name: Check setup
         env:
           CREDS: ${{ secrets.AZURE_CREDENTIALS }}
-          ADMINS: ${{ vars.JR_ADMIN_USERS }}
+          ADMINS: ${{ secrets.JR_ADMIN_USERS || vars.JR_ADMIN_USERS }}
         run: |
           if [ -z "$CREDS" ]; then echo "::error::Add the AZURE_CREDENTIALS secret first (docs/AZURE.md, step 2)."; exit 1; fi
-          if [ -z "$ADMINS" ]; then echo "::error::Add the JR_ADMIN_USERS variable (your sign-in email) first (docs/AZURE.md, step 3)."; exit 1; fi
+          if [ -z "$ADMINS" ]; then echo "::error::Add the JR_ADMIN_USERS secret (your sign-in email) first (docs/AZURE.md, step 3)."; exit 1; fi
 
       - uses: azure/login@v2
         with:
@@ -41,7 +41,7 @@ jobs:
       - name: Create or update Azure resources
         id: infra
         env:
-          ADMINS: ${{ vars.JR_ADMIN_USERS }}
+          ADMINS: ${{ secrets.JR_ADMIN_USERS || vars.JR_ADMIN_USERS }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           JOOBLE_KEY: ${{ secrets.JOOBLE_KEY }}

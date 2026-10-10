@@ -32,7 +32,7 @@ It prints a block of JSON that starts with `{` and contains `clientId`, `clientS
 In **github.com/akhileshr1122-ui/Job-radar-app → Settings → Secrets and variables → Actions**:
 
 1. On the **Secrets** tab, click **New repository secret**. Set the name to `AZURE_CREDENTIALS` and the value to the JSON from step 2.
-2. On the **Variables** tab, click **New repository variable**. Set the name to `JR_ADMIN_USERS` and the value to the account(s) you'll sign in with, comma separated. For example: `you@example.com,your-github-username`. Use the email for Microsoft sign-in and the username for GitHub sign-in.
+2. Click **New repository secret** again. Set the name to `JR_ADMIN_USERS` and the value to the account(s) you'll sign in with, comma separated. For example: `you@example.com,your-github-username`. Use the email for Microsoft sign-in and the username for GitHub sign-in. Keep it a secret, not a variable: this repo is public and variables show up in the run logs.
 3. Optional job-source keys, as **Secrets**: `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`, `JOOBLE_KEY`, `RAPIDAPI_KEY`. These are the same keys as in your own Job Radar repo, and everybody shares them.
 
 ### 4. Deploy
