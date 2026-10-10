@@ -524,10 +524,15 @@ def jsearch(cfg, report, state):
            [(f"{key_queries(cfg, 1)[0] if key_queries(cfg, 1) else 'jobs'} remote", country)]
     for q, country in plan[: cfg.get("jsearch_per_day", 6)]:
         r = get("https://jsearch.p.rapidapi.com/search", params={"query": q, "page": 1, "num_pages": 1, "country": country, "date_posted": "3days"},
-                headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"})
+                headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}, timeout=60, retries=1)
         d = _json(r)
         if d is None:
-            report["jsearch_error"] = f"HTTP {getattr(r, 'status_code', '?')}"
+            if r is None:
+                report["jsearch_error"] = "no answer from JSearch (timed out)"
+            else:
+                msg = (r.text or "")[:160].replace("\n", " ")
+                report["jsearch_error"] = f"HTTP {r.status_code}: {msg}" + (
+                    " (subscribe to JSearch by OpenWeb Ninja, free Basic plan)" if r.status_code == 403 else "")
             break
         for j in d.get("data") or []:
             ctry = (j.get("job_country") or "").upper()
@@ -539,7 +544,8 @@ def jsearch(cfg, report, state):
                              posted=to_iso(j.get("job_posted_at_datetime_utc")), description=j.get("job_description") or "",
                              salary=_money(j.get("job_min_salary"), j.get("job_max_salary"), "$")))
         time.sleep(1)
-    state["jsearch_day"] = today
+    if jobs or "jsearch_error" not in report:
+        state["jsearch_day"] = today  # a failed attempt doesn't use up the day
     report["jsearch"] = len(jobs)
     return jobs
 
