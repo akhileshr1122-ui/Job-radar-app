@@ -280,6 +280,8 @@ export function AdminPage({ say }) {
   const people = d?.people || [];
   const planOf = (id) => people.find((p) => p.id.toLowerCase() === (id || "").toLowerCase())?.plan;
   const reqs = d?.requests || [];
+  const seenOf = (id) => (d?.users || []).find((u) => (u.name || "").toLowerCase() === (id || "").toLowerCase())?.last_seen || "";
+  const signedIn = people.filter((p) => seenOf(p.id)).length;
   return html`<div class="page wide">
     <div class="pagehead"><div><h1>Admin</h1><p class="hint">Only you see this tab. Shared job pool updated ${d?.pool_updated ? ago(d.pool_updated) : "not yet"}.</p></div></div>
 
@@ -308,9 +310,10 @@ export function AdminPage({ say }) {
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>Invited</h2><span class="count">${people.length}</span></div>
+      <div class="panel-head"><h2>Invited</h2><span class="count">${signedIn} of ${people.length} signed in</span></div>
+      <p class="hint">Friends must sign in with exactly the email (or GitHub username) you invited. If they use a different one, it shows up under Requests so you can approve it.</p>
       ${people.length === 0 ? html`<p class="empty-s">Nobody invited yet.</p>` : html`<div class="doclist">${people.map((p) => html`<div class="docrow">
-        <div class="docname static"><b>${p.id}</b><small>${p.note || "Invited"} ${p.added ? ago(p.added) : ""}</small></div>
+        <div class="docname static"><b>${p.id}</b><small>${p.note || "Invited"} ${p.added ? ago(p.added) : ""} · ${seenOf(p.id) ? `signed in, last seen ${ago(seenOf(p.id))}` : "hasn't signed in yet"}</small></div>
         <div class="row">
           <select class="input slim" aria-label=${`Plan for ${p.id}`} value=${p.plan || "free"} onChange=${(e) => change({ setPlan: p.id, plan: e.target.value }, `${p.id} moved to ${planById(e.target.value).name}.`)}>
             ${PLANS.map((x) => html`<option value=${x.id}>${x.name}</option>`)}</select>

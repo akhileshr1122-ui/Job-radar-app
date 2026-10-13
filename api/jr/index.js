@@ -127,6 +127,15 @@ async function handle(req) {
       const fresh = { name: p.userDetails, provider: p.identityProvider, first_seen: acct?.first_seen || new Date().toISOString(), last_seen: new Date().toISOString() };
       if (!acct || Date.now() - Date.parse(acct.last_seen || 0) > 3600e3) await writeJson(`users/${uid}/account.json`, fresh);
     }
+    if (!allowed) {
+      // Someone signed in but isn't on the invite list (often: invited by email, signed in with GitHub or another address).
+      // Show it to the admin as a request they can approve with one click.
+      const r = await requestsList();
+      if (!r.items.some((x) => norm(x.email) === who)) {
+        await addRequest({ kind: "access", email: clean(p.userDetails, 120), name: "", plan: "free",
+          note: `Tried to sign in with ${p.identityProvider === "github" ? "GitHub" : "Microsoft"} but this sign-in isn't on the invite list.` });
+      }
+    }
     return reply(200, { signedIn: true, allowed, admin: isAdmin, user: p.userDetails, provider: p.identityProvider, uid: allowed ? uid : undefined,
       plan: allowed ? planOf(allow, who, isAdmin) : undefined });
   }
