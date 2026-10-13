@@ -38,7 +38,33 @@ titles = collections.Counter(j.get("title", "").lower()[:40] for j in jobs)
 note("POOL sample titles: " + "; ".join(t for t, _ in titles.most_common(25)))
 
 people = [i.name.split("/")[1] for i in box.walk_blobs(name_starts_with="users/", delimiter="/")]
-note(f"PEOPLE: {len(people)} accounts")
+note(f"PEOPLE: {len(people)} account folders")
+allow = get("config/allow.json") or {"people": []}
+reqs = (get("config/requests.json") or {}).get("items", [])
+inv = [x.get("id", "") for x in allow.get("people", [])]
+note(f"INVITED: {len(inv)} on the invite list ({sum('@' in i for i in inv)} emails, {sum('@' not in i for i in inv)} GitHub usernames); pending requests {len(reqs)}")
+import datetime as _dt
+_now = _dt.datetime.now(_dt.timezone.utc)
+def _age(t):
+    try:
+        return (_now - _dt.datetime.fromisoformat(t.replace("Z", "+00:00"))).days
+    except Exception:
+        return None
+c = collections.Counter()
+seen_names = set()
+for uid in people:
+    a = get(f"users/{uid}/account.json")
+    c["with account.json"] += bool(a)
+    c["provider " + (a or {}).get("provider", "none")] += 1
+    c["with resume"] += bool(get(f"users/{uid}/profile/resume.json"))
+    c["with jobs.json"] += bool(get(f"users/{uid}/data/jobs.json"))
+    d = _age((a or {}).get("last_seen", ""))
+    c["seen in last 7 days"] += d is not None and d <= 7
+    if a and a.get("name"):
+        seen_names.add(a["name"].strip().lower())
+note("FOLDERS: " + ", ".join(f"{k} {v}" for k, v in c.items()))
+inv_l = {i.strip().lower() for i in inv}
+note(f"MATCH: invited people who have signed in {len(inv_l & seen_names)} of {len(inv_l)}; accounts not on the invite list {len(seen_names - inv_l)}")
 if not DETAIL:
     note("Per-person detail hidden because this repository is public.")
     sys.exit(0)
