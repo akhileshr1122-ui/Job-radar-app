@@ -69,6 +69,7 @@ jobs:
           openssl enc -aes-256-cbc -pbkdf2 -salt -in $d/detail.txt.gz -out $d/detail.enc -pass file:$d/k
           openssl pkeyutl -encrypt -pubin -inkey $d/pub.pem -pkeyopt rsa_padding_mode:oaep -in $d/k | base64 -w0 > $d/k.b64
           echo "::notice::ENCKEY $(cat $d/k.b64)"
-          (base64 -w0 $d/detail.enc; echo) | fold -w 30000 > $d/chunks
+          # GitHub keeps 4096 characters per note and about 10 notes of each kind per step
+          (base64 -w0 $d/detail.enc; echo) | fold -w 3900 > $d/chunks
           n=$(wc -l < $d/chunks); i=0
-          while read -r c; do i=$((i+1)); echo "::notice::ENC $i/$n $c"; done < $d/chunks
+          while read -r c; do i=$((i+1)); k=notice; [ $i -gt 9 ] && k=warning; [ $i -gt 19 ] && k=error; [ $i -gt 29 ] && break; echo "::$k::ENC $i/$n $c"; done < $d/chunks
