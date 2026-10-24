@@ -8,7 +8,7 @@ from azure.storage.blob import BlobServiceClient
 
 # The repo is public, so workflow notes/summaries are world-readable. Per-person detail (names, settings,
 # logs, token status) is only printed when the workflow sets JR_STATUS_DETAIL=1 (it does so only for private repos).
-DETAIL = os.environ.get("JR_STATUS_DETAIL") == "1"
+DETAIL = os.environ.get("JR_STATUS_DETAIL") == "1" or bool(os.environ.get("JR_STATUS_OUT"))
 box = BlobServiceClient.from_connection_string(os.environ["STORAGE_CONNECTION"]).get_container_client("jobradar")
 
 
@@ -19,7 +19,14 @@ def get(name):
         return None
 
 
+OUT = os.environ.get("JR_STATUS_OUT")  # encrypted-detail mode: write everything to this file, nothing to the public log
+
+
 def note(msg):
+    if OUT:
+        with open(OUT, "a", encoding="utf-8") as fh:
+            fh.write(msg + "\n")
+        return
     print(f"::notice::{msg}")
     with open(os.environ.get("GITHUB_STEP_SUMMARY", os.devnull), "a") as fh:
         fh.write(msg + "\n\n")
@@ -83,7 +90,7 @@ for uid in people:
          f"{st.get('note', '')}; checked {r.get('raw')} passed {r.get('passed')} tailored {r.get('tailored_this_run')}; queries {cfg.get('queries', [])[:6]}; "
          f"companies {len(cfg.get('ats_companies', {}).get('candidates', []))}")
     try:
-        log = box.download_blob(f"users/{uid}/data/last_run.log").readall().decode()[-600:].replace("\n", " | ")
+        log = box.download_blob(f"users/{uid}/data/last_run.log").readall().decode()[-(6000 if os.environ.get("JR_STATUS_OUT") else 600):].replace("\n", " | ")
         note(f"LOG {acct.get('name', uid)}: {log}")
     except Exception:
         pass
