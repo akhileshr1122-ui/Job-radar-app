@@ -76,6 +76,18 @@ if not DETAIL:
     note("Per-person detail hidden because this repository is public.")
     sys.exit(0)
 
+if OUT:
+    for x in allow.get("people", []):
+        note(f"ALLOW {x.get('id')}: plan={x.get('plan')} note={x.get('note')!r} added={x.get('added')}")
+    for uid in people:
+        rj = get(f"users/{uid}/profile/resume.json") or {}
+        jj = get(f"users/{uid}/data/jobs.json") or {}
+        a = get(f"users/{uid}/account.json") or {}
+        names = [b.name.split("/", 2)[2] for b in box.list_blobs(name_starts_with=f"users/{uid}/") if not b.name.endswith((".pdf", ".docx"))][:40]
+        note(f"RESUME {a.get('name', uid)}: imported={rj.get('_imported')} experience={len(rj.get('experience') or [])} "
+             f"skills={sum(len(v) for v in (rj.get('skills') or {}).values() if isinstance(v, list))} education={len(rj.get('education') or [])} "
+             f"summary_len={len(rj.get('summary_base') or '')} location={rj.get('contact', {}).get('location')!r} | jobs note={jj.get('note')!r} | files={names}")
+
 for uid in people:
     acct = get(f"users/{uid}/account.json") or {}
     jf = get(f"users/{uid}/data/jobs.json") or {}
