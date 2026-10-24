@@ -272,6 +272,7 @@ export function AdminPage({ say }) {
   const [add, setAdd] = useState("");
   const [note, setNote] = useState("");
   const [plan, setPlan] = useState("free");
+  const [pick, setPick] = useState({});
   const load = () => gh.admin().then(setD).catch((e) => say(e.message));
   useEffect(() => { load(); }, []);
   async function change(body, msg) {
@@ -294,7 +295,9 @@ export function AdminPage({ say }) {
         <div class="row">
           ${r.kind === "upgrade"
             ? html`<button class="btn primary small" onClick=${() => change({ setPlan: r.email, plan: r.plan }, `${r.email} is on ${planById(r.plan).name} now.`)}>Move to ${planById(r.plan).name}</button>`
-            : html`<button class="btn primary small" onClick=${() => change({ add: r.email, note: r.name, plan: r.plan }, `${r.email} can sign in now. Send them the link.`)}>Approve</button>`}
+            : html`<select class="input slim" aria-label=${`Plan for ${r.email}`} value=${pick[r.email] || r.plan || "free"} onChange=${(e) => setPick({ ...pick, [r.email]: e.target.value })}>
+                ${PLANS.map((x) => html`<option value=${x.id}>${x.name}</option>`)}</select>
+              <button class="btn primary small" onClick=${() => { const pl = pick[r.email] || r.plan || "free"; change({ add: r.email, note: r.name, plan: pl }, `${r.email} can sign in now, on ${planById(pl).name}.`); }}>Approve</button>`}
           <button class="btn small" onClick=${() => change({ dismiss: r.email, kind: r.kind })}>Dismiss</button>
         </div></div>`)}</div>`}
     </section>

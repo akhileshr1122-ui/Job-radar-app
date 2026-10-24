@@ -41,6 +41,9 @@ jobs:
               az storage message put -q jobradar-runs --content "{\"uid\": \"$uid\", \"search\": true}" --connection-string "$STORAGE_CONNECTION" -o none && echo "Search queued for one account"
             done
           fi
+          az extension add --name containerapp --only-show-errors >/dev/null 2>&1 || true
+          envs=$(az containerapp job show -n jobradar-queue -g "$RG" --query "properties.template.containers[0].env[].name" -o tsv 2>/dev/null | tr '\n' ' ')
+          echo "::notice::AI for Plus/Pro: shared key $(echo "$envs" | grep -qw SHARED_ANTHROPIC_API_KEY && echo configured || echo NOT configured); admin token $(echo "$envs" | grep -qw ADMIN_CLAUDE_TOKEN && echo configured || echo not configured)"
           echo "::notice::Queue job runs: $(az containerapp job execution list -n jobradar-queue -g "$RG" --query "[0:5].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"
           echo "::notice::Queue length: $(az storage message peek -q jobradar-runs --num-messages 32 --connection-string "$STORAGE_CONNECTION" --query 'length(@)' -o tsv 2>/dev/null)"
           echo "::notice::Bulk job runs: $(az containerapp job execution list -n jobradar-bulk -g "$RG" --query "[0:3].{s:properties.status,t:properties.startTime}" -o tsv 2>/dev/null | tr '\n' ' ')"

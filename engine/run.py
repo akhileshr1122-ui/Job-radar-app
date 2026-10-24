@@ -189,8 +189,16 @@ def main(argv=None):
     resume = load(os.path.join(ROOT, "profile", "resume.json"), None)
     profile_hash = file_hash(os.path.join(ROOT, "profile", "resume.json"))
     if not resume or not resume.get("experience"):
+        imp = (resume or {}).get("_imported") or {}
+        if (import_note or "").startswith("Import failed"):
+            note = import_note
+        elif imp:
+            note = (f"We read {imp.get('file') or 'your resume'} but couldn't find your work history in it (job titles with dates). "
+                    "Try uploading the PDF version, and check that each job shows its title and dates, like 'Jan 2021 – Present'.")
+        else:
+            note = "Upload your resume in the app to start."
         save(os.path.join(DATA, "jobs.json"), {"updated": now_iso(), "count": 0, "new_this_run": 0, "setup_needed": True,
-                                               "note": import_note or "Upload your resume in the app to start.", "jobs": []})
+                                               "note": note, "jobs": []})
         for r in reqs:
             try:
                 os.remove(r["_file"])

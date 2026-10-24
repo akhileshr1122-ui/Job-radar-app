@@ -215,6 +215,7 @@ async function handle(req) {
       const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
       const add = norm(b.add), remove = norm(b.remove), setPlan = norm(b.setPlan), dismiss = norm(b.dismiss);
       if (add && !allow.people.some((x) => norm(x.id) === add)) allow.people.push({ id: add, note: clean(b.note, 80), plan: PLANS[b.plan] ? b.plan : "free", added: new Date().toISOString() });
+      else if (add && PLANS[b.plan]) allow.people = allow.people.map((x) => (norm(x.id) === add ? { ...x, plan: b.plan, note: x.note || clean(b.note, 80) } : x)); // invited again: use the new plan
       if (setPlan && PLANS[b.plan]) allow.people = allow.people.map((x) => (norm(x.id) === setPlan ? { ...x, plan: b.plan } : x));
       if (remove) allow.people = allow.people.filter((x) => norm(x.id) !== remove);
       if (add || setPlan || remove) await writeJson("config/allow.json", allow);
