@@ -52,9 +52,9 @@ async function enqueue(uid, search = false) {
 
 // Plans: what each tier allows. Prices and names shown on the site live in web/plans.js.
 const PLANS = {
-  free: { searchNowPerDay: 3 },
-  plus: { searchNowPerDay: 10 },
-  pro: { searchNowPerDay: 30 },
+  free: { searchNowPerDay: 3, profiles: 2 },
+  plus: { searchNowPerDay: 10, profiles: 3 },
+  pro: { searchNowPerDay: 30, profiles: 5 },
 };
 const planOf = (allow, who, isAdmin) => (isAdmin ? "pro" : (allow.people.find((x) => norm(x.id) === who)?.plan || "free"));
 
@@ -77,8 +77,9 @@ async function allowList() {
 
 // ---------------------------------------------------------------- paths a person may touch
 
-const READ_OK = /^(profile\/(resume|search)\.json|user\/state\.json|data\/[A-Za-z0-9_.\/-]+)$/;
-const WRITE_OK = /^(profile\/(resume|search)\.json|user\/state\.json|requests\/[A-Za-z0-9_.-]+\.json|uploads\/resume\.(pdf|docx|doc|txt)|data\/imported\/[A-Za-z0-9_-]+\.json)$/;
+const PROFILE_FILES = "profile\\/(resume|search)\\.json|profiles\\/index\\.json|profiles\\/[a-z0-9-]{1,24}\\/(resume|search)\\.json";
+const READ_OK = new RegExp(`^(${PROFILE_FILES}|user\\/state\\.json|data\\/[A-Za-z0-9_.\\/-]+)$`);
+const WRITE_OK = new RegExp(`^(${PROFILE_FILES}|user\\/state\\.json|requests\\/[A-Za-z0-9_.-]+\\.json|uploads\\/resume\\.(pdf|docx|doc|txt)|data\\/imported\\/[A-Za-z0-9_-]+\\.json)$`);
 const safe = (p) => typeof p === "string" && !p.includes("..") && !p.includes("\\") && !p.startsWith("/");
 
 const TYPES = { json: "application/json", pdf: "application/pdf", md: "text/markdown; charset=utf-8", log: "text/plain; charset=utf-8",
@@ -137,7 +138,7 @@ async function handle(req) {
       }
     }
     return reply(200, { signedIn: true, allowed, admin: isAdmin, user: p.userDetails, provider: p.identityProvider, uid: allowed ? uid : undefined,
-      plan: allowed ? planOf(allow, who, isAdmin) : undefined });
+      plan: allowed ? planOf(allow, who, isAdmin) : undefined, maxProfiles: allowed ? PLANS[planOf(allow, who, isAdmin)].profiles : undefined });
   }
   if (!p) return reply(401, { error: "Please sign in." });
   if (!allowed) return reply(403, { error: `${p.userDetails} isn't on the invite list yet. Ask the person who runs this Job Radar to add you.` });
@@ -167,7 +168,7 @@ async function handle(req) {
         try { JSON.parse(buf.toString("utf8")); } catch { return reply(400, { error: "That isn't valid JSON." }); }
       }
       await writeBuf(home + path, buf, TYPES[path.split(".").pop()] || "application/octet-stream");
-      if (path.startsWith("profile/")) await enqueue(uid, true); // new settings or resume: match the job pool again
+      if (path.startsWith("profile/") || path.startsWith("profiles/")) await enqueue(uid, true); // new settings or resume: match the job pool again
       else if (path.startsWith("requests/")) await enqueue(uid, false);
       return reply(200, { ok: true });
     }

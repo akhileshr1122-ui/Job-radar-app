@@ -6,7 +6,7 @@ on:
   workflow_dispatch:          # "Run search now" button in the app
   push:
     branches: [main]
-    paths: ["profile/**", "engine/**", "requests/**", "uploads/**"]
+    paths: ["profile/**", "profiles/**", "engine/**", "requests/**", "uploads/**"]
 
 permissions:
   contents: write

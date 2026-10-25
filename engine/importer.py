@@ -399,7 +399,8 @@ def setup_search(cfg, resume):
         elif re.search(r"\b(usa|united states|us)\b", loc, re.I) or re.search(r",\s*[A-Z]{2}\s*$", loc) and not re.search(
                 r",\s*(ON|QC|BC|AB|MB|SK|NS|NB|NL|PE)\s*$", loc):
             cfg["locations"]["country"] = "US"
-    cfg["title_terms"]["required"] = []
+    cfg.setdefault("title_terms", {})["required"] = []
     cfg["description_keywords"] = {}
     cfg.pop("_setup", None)
-    return cfg
+    import related
+    return related.widen(cfg, resume)

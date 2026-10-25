@@ -31,6 +31,7 @@ import render  # noqa: E402
 import sources  # noqa: E402
 from score import score  # noqa: E402
 import importer  # noqa: E402
+import related  # noqa: E402
 import tailor as tailor_mod  # noqa: E402
 from tailor import ai_available, all_skills, interview_prep, keyword_tailor, tailor  # noqa: E402
 from util import classify_location, geocache, geocode, job_id, load_geocache, norm, now_iso, safe_url  # noqa: E402
@@ -135,6 +136,50 @@ def handle_add_requests(reqs, cfg):
     return out
 
 
+PID = re.compile(r"^[a-z0-9-]{1,24}$")
+
+
+def profile_dir(pid):
+    """Main profile: profile/. Extra profiles (another resume, a career switch): profiles/<id>/."""
+    return os.path.join(ROOT, "profile") if pid in (None, "", "main") else os.path.join(ROOT, "profiles", pid)
+
+
+def profile_index():
+    idx = load(os.path.join(ROOT, "profiles", "index.json"), {}) or {}
+    return [p for p in idx.get("profiles", []) if isinstance(p, dict) and PID.match(str(p.get("id", ""))) and p["id"] != "main"], idx.get("main_name") or ""
+
+
+def base_name(pid):
+    return "base" if pid in (None, "", "main") else f"base-{pid}"
+
+
+def prepare_cfg(c, r):
+    """Settings that adapt to any profile (filled in at search time, never saved)."""
+    locs = c.setdefault("locations", {})
+    if not locs.get("search_locations") and r.get("contact", {}).get("location"):
+        locs["search_locations"] = [{"place": r["contact"]["location"], "radius_km": 50}]
+    c["_ex_amazon"] = any("amazon" in (e.get("company") or "").lower() for e in r.get("experience", []))
+    if not c.get("title_terms", {}).get("required") or not c.get("title_terms", {}).get("weighted"):
+        words = sources.query_words(c, 12)
+        c["_auto_required"] = list(dict.fromkeys(words + [w.replace("-", "") for w in words if "-" in w]))
+    if not c.get("description_keywords"):
+        c["description_keywords"] = {s.lower().split(" (")[0]: 2 for s in all_skills(r) if len(s) < 40}
+        for k in (c.get("related_added") or {}).get("keywords", []):
+            c["description_keywords"].setdefault(k, 1)
+    c["_place_points"] = [(p, ll, sources.radius_km(c, p)) for p in sources.places(c) for ll in [geocode(p)] if ll]
+    return c
+
+
+def best_score(job, profs):
+    """Score a posting against every profile; the best one wins. Returns (result, profile id) or (None, None)."""
+    best, who = None, None
+    for p in profs:
+        res = score(dict(job), p["cfg"])
+        if res and res[0] >= p["cfg"]["min_score_to_save"] and (best is None or res[0] > best[0]):
+            best, who = res, p["id"]
+    return best, who
+
+
 def base_job(resume):
     """A neutral 'job' for the standard resume: the person's own headline and top skills."""
     title = (resume.get("headlines") or {}).get("main") or (resume.get("experience") or [{}])[0].get("title", "")
@@ -168,13 +213,21 @@ def main(argv=None):
     import_note = None
     for r in [r for r in reqs if r.get("type") == "import_resume"]:
         path = os.path.join(ROOT, r.get("path", ""))
+        pid = r.get("profile") if PID.match(str(r.get("profile") or "")) else "main"
+        pdir = profile_dir(pid)
         try:
             data = importer.import_resume(path, cfg)
-            old = load(os.path.join(ROOT, "profile", "resume.json"), {})
+            old = load(os.path.join(pdir, "resume.json"), {}) or load(os.path.join(ROOT, "profile", "resume.json"), {})
             if old.get("application_answers"):
                 data["application_answers"] = {**data.get("application_answers", {}), **{k: v for k, v in old["application_answers"].items() if v}}
-            save(os.path.join(ROOT, "profile", "resume.json"), data)
-            if cfg.get("_setup") or r.get("reset_search"):
+            os.makedirs(pdir, exist_ok=True)
+            save(os.path.join(pdir, "resume.json"), data)
+            if pid != "main":
+                pcfg = load(os.path.join(pdir, "search.json"), None)
+                if pcfg is None or r.get("reset_search"):  # a new profile starts from the main settings, aimed at this resume
+                    pcfg = importer.setup_search(json.loads(json.dumps(cfg)), data)
+                    save(os.path.join(pdir, "search.json"), pcfg)
+            elif cfg.get("_setup") or r.get("reset_search"):
                 cfg = importer.setup_search(cfg, data)
                 save(os.path.join(ROOT, "profile", "search.json"), cfg)
             import_note = f"Imported {os.path.basename(path)} ({data['_imported']['method']})"
@@ -209,10 +262,38 @@ def main(argv=None):
         print("no resume yet – nothing to search")
         return
 
-    for k, v in limits.items():
-        cfg[k] = min(cfg.get(k, v), v)
-    if os.environ.get("JR_MODEL"):
-        cfg["claude_model"] = os.environ["JR_MODEL"]
+    if not cfg.get("_related_v"):  # once: add related job titles and keywords to an existing search
+        related.widen(cfg, resume)
+        save(os.path.join(ROOT, "profile", "search.json"), cfg)
+        print(f"related titles added: {cfg['related_added']['titles']}")
+
+    index, main_name = profile_index()
+    profs = [{"id": "main", "name": main_name or "Main profile", "cfg": cfg, "resume": resume}]
+    for e in index:
+        pdir = profile_dir(e["id"])
+        r = load(os.path.join(pdir, "resume.json"), None)
+        if not r or not r.get("experience"):
+            continue
+        c = load(os.path.join(pdir, "search.json"), None)
+        if c is None:
+            c = importer.setup_search(json.loads(json.dumps(cfg)), r)
+            save(os.path.join(pdir, "search.json"), c)
+        elif not c.get("_related_v"):
+            related.widen(c, None if c.get("queries") else r)  # a career switch widens around its chosen titles, not past jobs
+            save(os.path.join(pdir, "search.json"), c)
+        c["queries"] = [q for q in c.get("queries", []) if isinstance(q, str) and 0 < len(q.strip()) <= 60 and not q.rstrip().endswith(".")]
+        profs.append({"id": e["id"], "name": str(e.get("name") or "Profile")[:40], "cfg": c, "resume": r})
+    profs = profs[: max(1, int(limits.get("max_profiles", cfg.get("max_profiles", 5))))]
+    for p in profs:
+        for k, v in limits.items():
+            p["cfg"][k] = min(p["cfg"].get(k, v), v)
+        if os.environ.get("JR_MODEL"):
+            p["cfg"]["claude_model"] = os.environ["JR_MODEL"]
+        p["hash"] = file_hash(os.path.join(profile_dir(p["id"]), "resume.json"))
+    by_pid = {p["id"]: p for p in profs}
+    pof = lambda j: by_pid.get(j.get("profile") or "main") or by_pid["main"]  # noqa: E731
+    if len(profs) > 1:
+        print("profiles: " + ", ".join(f"{p['name']} ({len(p['cfg'].get('queries', []))} titles)" for p in profs))
 
     # ---- data brought over from a GitHub Job Radar (hosted mode): jobs list + tailored resumes, rendered here
     imp_dir = os.path.join(DATA, "imported")
@@ -239,17 +320,9 @@ def main(argv=None):
         print(f"brought over {n} tailored resumes from GitHub")
 
     # ---- settings that adapt to any profile
-    locs = cfg.setdefault("locations", {})
-    if not locs.get("search_locations") and resume.get("contact", {}).get("location"):
-        locs["search_locations"] = [{"place": resume["contact"]["location"], "radius_km": 50}]
-    cfg["_ex_amazon"] = any("amazon" in (e.get("company") or "").lower() for e in resume.get("experience", []))
-    if not cfg.get("title_terms", {}).get("required") or not cfg.get("title_terms", {}).get("weighted"):
-        words = sources.query_words(cfg, 12)
-        cfg["_auto_required"] = list(dict.fromkeys(words + [w.replace("-", "") for w in words if "-" in w]))
-    if not cfg.get("description_keywords"):
-        cfg["description_keywords"] = {s.lower().split(" (")[0]: 2 for s in all_skills(resume) if len(s) < 40}
     load_geocache(load(os.path.join(DATA, "geocache.json"), {}))
-    cfg["_place_points"] = [(p, ll, sources.radius_km(cfg, p)) for p in sources.places(cfg) for ll in [geocode(p)] if ll]
+    for p in profs:
+        prepare_cfg(p["cfg"], p["resume"])
     cache = load(os.path.join(DATA, "ats_cache.json"), {})
     run_state = load(os.path.join(DATA, "run_state.json"), {})
     user_state = load(os.path.join(ROOT, "user", "state.json"), {}).get("statuses", {})
@@ -273,21 +346,27 @@ def main(argv=None):
         pool = load(args.pool, {"jobs": []})
         raw, report = [dict(j) for j in pool.get("jobs", [])], dict(pool.get("report", {}))
         if args.user_fetch:
-            mine, my_report = sources.fetch_user(cfg, run_state)
-            raw += mine
-            report.update(my_report)
+            for p in profs:
+                mine, my_report = sources.fetch_user(p["cfg"], run_state)
+                raw += mine
+                report.update(my_report)
     elif not args.requests_only:
         raw, report = sources.fetch_all(cfg, cache, run_state)
+        for p in profs[1:]:  # the other profiles' own search phrases
+            mine, _ = sources.fetch_user(p["cfg"], run_state)
+            raw += mine
     print(f"fetched {len(raw)} raw postings")
 
     best = {}
     kept = 0
     for j in raw:
-        res = score(j, cfg)
-        if not res or res[0] < cfg["min_score_to_save"]:
+        res, pid = best_score(j, profs)
+        if not res:
             continue
+        country, remote = classify_location(j["location"], j.get("remote"), j["description"])
+        j.update(country=country, remote=remote)
         kept += 1
-        j.update(score=res[0], reasons=res[1], matched=res[2])
+        j.update(score=res[0], reasons=res[1], matched=res[2], profile=pid)
         merge_into(best, j)
     added_keys = set()
     for j in handle_add_requests(add_reqs, cfg):
@@ -308,6 +387,7 @@ def main(argv=None):
             "first_seen": old.get("first_seen", started), "last_seen": started,
             "score": j["score"], "reasons": j["reasons"], "matched": j["matched"], "salary": j.get("salary", ""),
             "description": j["description"][:8000] or old.get("description", ""),
+            "profile": j.get("profile") or old.get("profile") or "main",
         }
         if j.get("manual") or old.get("manual"):
             rec["manual"] = True
@@ -347,8 +427,12 @@ def main(argv=None):
         except (KeyError, ValueError):
             continue
         if args.requests_only or (last > now - timedelta(days=5) and datetime.fromisoformat(old["first_seen"]) > keep_cut):
-            res = score(dict(old), cfg)
-            if old.get("manual") or (res and res[0] >= cfg["min_score_to_save"]):
+            res, pid = best_score(old, profs)
+            if old.get("manual") or res:
+                if pid and not old.get("manual"):
+                    old["profile"] = pid
+                elif (old.get("profile") or "main") not in by_pid:
+                    old["profile"] = "main"
                 merged[jid] = old
 
     # ---- tailoring
@@ -374,7 +458,7 @@ def main(argv=None):
             return False
         if "resume_pdf" not in j or j["id"] in retailor_ids:
             return True
-        if j.get("profile_hash") != profile_hash:
+        if j.get("profile_hash") != pof(j)["hash"]:
             return True
         ai_worthy = important or j["score"] >= cfg.get("min_score_for_ai", 65)
         return have_ai and ai_worthy and j.get("tailor_method") != "claude"
@@ -389,15 +473,16 @@ def main(argv=None):
         important = j.get("manual") or st in TRACKED or j["id"] in retailor_ids
         use_ai = have_ai and (important or j["score"] >= cfg.get("min_score_for_ai", 65)) and (ai_budget > 0 or important)
         print(f"tailoring {j['score']:>3} {'AI ' if use_ai else 'kw '} {j['title']} @ {j['company']}")
-        t = tailor(dict(j), resume, cfg, use_claude=use_ai)
+        P = pof(j)
+        t = tailor(dict(j), P["resume"], P["cfg"], use_claude=use_ai)
         counts["ai_resumes" if t["method"] == "claude" else "keyword_resumes"] += 1
         if t["method"] == "claude":
             ai_budget -= 1
             run_state["ai_used"] = run_state.get("ai_used", 0) + 1
         stem = os.path.join(RES_DIR, j["id"])
         try:
-            render.to_pdf(t, resume, stem + ".pdf")
-            render.to_docx(t, resume, stem + ".docx")
+            render.to_pdf(t, P["resume"], stem + ".pdf")
+            render.to_docx(t, P["resume"], stem + ".docx")
         except Exception as e:
             print(f"  render failed: {e!r}")
             continue
@@ -405,7 +490,7 @@ def main(argv=None):
         j.update(resume_pdf=f"data/resumes/{j['id']}.pdf", resume_docx=f"data/resumes/{j['id']}.docx",
                  headline=t["headline"], summary=t["summary"], cover_letter=t["cover_letter"],
                  keywords_missing=t["keywords_missing"], keywords_matched=t["keywords_matched"],
-                 tailor_method=t["method"], profile_hash=profile_hash)
+                 tailor_method=t["method"], profile_hash=P["hash"])
         if t.get("fit_notes"):
             j["fit_notes"] = t["fit_notes"]
         done += 1
@@ -416,21 +501,22 @@ def main(argv=None):
         t = r.get("tailored")
         if not j or not isinstance(t, dict):
             continue
-        base_t = load(os.path.join(RES_DIR, j["id"] + ".json"), {}) or keyword_tailor(dict(j), resume, cfg)
+        P = pof(j)
+        base_t = load(os.path.join(RES_DIR, j["id"] + ".json"), {}) or keyword_tailor(dict(j), P["resume"], P["cfg"])
         t = {**base_t, **{k: v for k, v in t.items() if k in ("headline", "summary", "skills", "experience", "projects", "cover_letter")}}
         t["method"] = "edited"
-        known = {e["id"] for e in resume["experience"]}
+        known = {e["id"] for e in P["resume"]["experience"]}
         t["experience"] = [e for e in t.get("experience", []) if isinstance(e, dict) and e.get("id") in known]
         stem = os.path.join(RES_DIR, j["id"])
         try:
-            render.to_pdf(t, resume, stem + ".pdf")
-            render.to_docx(t, resume, stem + ".docx")
+            render.to_pdf(t, P["resume"], stem + ".pdf")
+            render.to_docx(t, P["resume"], stem + ".docx")
         except Exception as e:
             print(f"  edit render failed: {e!r}")
             continue
         save(stem + ".json", t)
         j.update(resume_pdf=f"data/resumes/{j['id']}.pdf", resume_docx=f"data/resumes/{j['id']}.docx", headline=t.get("headline", ""),
-                 summary=t.get("summary", ""), cover_letter=t.get("cover_letter", ""), tailor_method="edited", profile_hash=profile_hash)
+                 summary=t.get("summary", ""), cover_letter=t.get("cover_letter", ""), tailor_method="edited", profile_hash=P["hash"])
         counts["edits"] += 1
         print(f"saved edits for {j['title']} @ {j['company']}")
 
@@ -441,7 +527,7 @@ def main(argv=None):
         j = merged.get(r.get("job_id"))
         if not j:
             continue
-        md = interview_prep(j, resume, cfg) if have_ai else None
+        md = interview_prep(j, pof(j)["resume"], pof(j)["cfg"]) if have_ai else None
         if md is None:
             md = ("# Interview prep\n\nInterview prep needs AI. Add one secret to your Job Radar repo (Settings → Secrets and "
                   "variables → Actions): `CLAUDE_CODE_OAUTH_TOKEN` (uses your Claude Pro/Max plan – run `claude setup-token` once to get it) "
@@ -454,22 +540,27 @@ def main(argv=None):
             counts["prep_sheets"] += 1
 
     # ---- base resume (default selection) always available
-    if profile_hash != run_state.get("base_hash") or not os.path.exists(os.path.join(RES_DIR, "base.json")):
-        base = keyword_tailor(base_job(resume), resume, cfg)
-        save(os.path.join(RES_DIR, "base.json"), base)
-        try:
-            render.to_pdf(base, resume, os.path.join(RES_DIR, "base.pdf"))
-            render.to_docx(base, resume, os.path.join(RES_DIR, "base.docx"))
-            run_state["base_hash"] = profile_hash
-        except Exception as e:
-            print(f"base resume render failed: {e!r}")
+    hashes = run_state.setdefault("base_hashes", {})
+    if "base_hash" in run_state:
+        hashes.setdefault("main", run_state.pop("base_hash"))
+    for P in profs:
+        name = base_name(P["id"])
+        if P["hash"] != hashes.get(P["id"]) or not os.path.exists(os.path.join(RES_DIR, name + ".json")):
+            base = keyword_tailor(base_job(P["resume"]), P["resume"], P["cfg"])
+            save(os.path.join(RES_DIR, name + ".json"), base)
+            try:
+                render.to_pdf(base, P["resume"], os.path.join(RES_DIR, name + ".pdf"))
+                render.to_docx(base, P["resume"], os.path.join(RES_DIR, name + ".docx"))
+                hashes[P["id"]] = P["hash"]
+            except Exception as e:
+                print(f"base resume render failed ({P['name']}): {e!r}")
 
     # ---- prune files of jobs no longer listed
     live = set(merged)
     for d in (RES_DIR, PREP_DIR):
         for fn in os.listdir(d):
             stem = fn.split(".")[0]
-            if stem != "base" and stem not in live:
+            if stem not in live and stem not in {base_name(P["id"]) for P in profs}:
                 os.remove(os.path.join(d, fn))
 
     # ---- processed requests are removed (the workflow commits the deletion)
@@ -482,7 +573,9 @@ def main(argv=None):
     jobs = sorted(merged.values(), key=lambda j: (-j["score"], j.get("posted") or ""))
     new_count = sum(1 for j in jobs if j["first_seen"] == started)
     save(os.path.join(DATA, "jobs.json"), {"updated": started, "count": len(jobs), "new_this_run": new_count,
-                                           "profile_hash": profile_hash, "jobs": jobs})
+                                           "profile_hash": profile_hash, "jobs": jobs,
+                                           "profiles": [{"id": P["id"], "name": P["name"], "count": sum(1 for j in jobs if (j.get("profile") or "main") == P["id"])}
+                                                        for P in profs]})
     save(os.path.join(DATA, "ats_cache.json"), cache)
     save(os.path.join(DATA, "run_state.json"), run_state)
     save(os.path.join(DATA, "geocache.json"), geocache())

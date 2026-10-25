@@ -7,6 +7,7 @@ import { Landing } from "./landing.js";
 import { Home, Tracker, Documents, Insights, PlanPage, AdminPage } from "./pages.js";
 import { Coverage, UsagePage } from "./dash.js";
 import { planById } from "./plans.js";
+import { loadRelated, relatedTitles, relatedKeywords, directions } from "./related.js";
 
 // ------------------------------------------------------------------ app
 
@@ -24,7 +25,18 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [extra, setExtra] = useState(restore("jr.profiles", { mainName: "", list: [] }));
   const saveTimer = useRef(null);
+  // extra profiles (another resume, a career switch): profiles/index.json + each one's resume and standard resume
+  const loadProfiles = useCallback(async () => {
+    const idx = await gh.json("profiles/index.json").catch(() => null);
+    const list = await Promise.all(((idx && idx.profiles) || []).map(async (p) => ({ id: p.id, name: p.name,
+      resume: await gh.json(`profiles/${p.id}/resume.json`).catch(() => null),
+      base: await gh.json(`data/resumes/base-${p.id}.json`).catch(() => null) })));
+    const next = { mainName: (idx && idx.main_name) || "", list };
+    setExtra(next); store("jr.profiles", next);
+    return next;
+  }, []);
 
   const say = useCallback((msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? null : t)), 6000); }, []);
   useEffect(() => {
@@ -49,6 +61,7 @@ function App() {
       gh.json("profile/search.json").then(setSearch).catch(() => {});
       gh.json("data/report.json").then(setReport).catch(() => {});
       gh.json("data/resumes/base.json").then(setBase).catch(() => {});
+      loadProfiles().catch(() => {});
       gh.json("user/state.json").then((st) => {
         // merge: newest change per job wins, so phone and browser stay in step
         setStatuses((local) => {
@@ -120,8 +133,11 @@ function App() {
   const jobs = file?.jobs || [];
   const job = sel && jobs.find((j) => j.id === sel);
   const openJob = (id) => { setSel(id); setRouteRaw("jobs"); scrollTo(0, 0); };
+  const profiles = [{ id: "main", name: extra.mainName || "Main profile", resume, base }, ...extra.list];
+  const profileOf = (j) => profiles.find((p) => p.id === (j?.profile || "main")) || profiles[0];
+  const maxProfiles = gh.mode === "azure" ? gh.me?.maxProfiles || 2 : 5;
   const ctx = { file, jobs, resume, search, report, base, statuses, setStatus, say, refresh, loading, setRoute, setSel, setResume, setSearch, title, openJob, run,
-    searchNow: gh.mode === "azure" ? searchNow : null };
+    searchNow: gh.mode === "azure" ? searchNow : null, profiles, profileOf, loadProfiles, maxProfiles, mainName: extra.mainName };
 
   const counts = {
     inbox: jobs.filter((j) => !statuses[j.id]).length,
@@ -138,7 +154,7 @@ function App() {
   else if (current === "home") main = html`<${Home} ...${ctx} />`;
   else if (current === "jobs") main = html`<div class=${"jobsview" + (job ? " has-detail" : "")}>
       <${JobList} ...${ctx} sel=${sel} counts=${counts} onAdd=${() => setAdding(true)} />
-      <div class="detailpane">${job ? html`<${Detail} key=${job.id} job=${job} ...${ctx} />`
+      <div class="detailpane">${job ? html`<${Detail} key=${job.id} job=${job} ...${ctx} resume=${profileOf(job).resume || resume} base=${profileOf(job).base || (profileOf(job).id === "main" ? base : null)} profile=${profiles.length > 1 ? profileOf(job) : null} />`
         : html`<div class="page empty">Pick a job to see why it matched, review your tailored resume and apply.</div>`}</div>
     </div>`;
   else if (current === "tracker") main = html`<${Tracker} ...${ctx} />`;
@@ -206,13 +222,125 @@ function AccountMenu({ setRoute, refresh, loading, onAdd, onDisconnect }) {
   </div>`;
 }
 
-function ProfileTabs({ sub, setRoute, ...ctx }) {
+const profileDir = (pid) => (pid === "main" ? "profile" : `profiles/${pid}`);
+
+async function saveIndex(mutate) {
+  const idx = (await gh.json("profiles/index.json").catch(() => null)) || { profiles: [] };
+  idx.profiles = idx.profiles || [];
+  mutate(idx);
+  await gh.putText("profiles/index.json", JSON.stringify(idx, null, 2) + "\n", "app: profiles");
+}
+
+function ProfileTabs({ sub, setRoute, profiles, loadProfiles, maxProfiles, ...ctx }) {
+  const [pid, setPidRaw] = useState(restore("jr.pid", "main"));
+  const setPid = (id) => { setPidRaw(id); store("jr.pid", id); };
+  const [creating, setCreating] = useState(false);
+  const [psearch, setPsearch] = useState(null);
+  const P = profiles.find((p) => p.id === pid) || profiles[0];
+  const main = P.id === "main";
+  useEffect(() => {
+    if (main) return;
+    setPsearch(null);
+    gh.json(`${profileDir(P.id)}/search.json`).then(setPsearch).catch(() => setPsearch({}));
+  }, [P.id]);
+  const { say } = ctx;
+  async function rename() {
+    const name = prompt("Name for this profile", P.name);
+    if (!name || !name.trim()) return;
+    try {
+      await saveIndex((idx) => { if (main) idx.main_name = name.trim().slice(0, 40); else idx.profiles = idx.profiles.map((x) => (x.id === P.id ? { ...x, name: name.trim().slice(0, 40) } : x)); });
+      await loadProfiles(); say("Renamed.");
+    } catch (e) { say(e.message); }
+  }
+  async function remove() {
+    if (!confirm(`Delete the ${P.name} profile? Its jobs move to your other profiles if they still match.`)) return;
+    try { await saveIndex((idx) => { idx.profiles = idx.profiles.filter((x) => x.id !== P.id); }); setPid("main"); await loadProfiles(); say("Profile deleted."); }
+    catch (e) { say(e.message); }
+  }
+  const atMax = profiles.length >= maxProfiles;
   return html`<div>
+    <div class="profilebar wrapw">
+      <div class="chips" role="group" aria-label="Profiles">
+        ${profiles.map((p) => html`<button class="chip" aria-pressed=${p.id === P.id} onClick=${() => setPid(p.id)}>${p.name}</button>`)}
+        <button class="chip add" disabled=${atMax} title=${atMax ? `Your plan allows ${maxProfiles} profiles` : ""} onClick=${() => setCreating(true)}>+ New profile</button>
+      </div>
+      <p class="hint">${profiles.length > 1 ? `Every profile is searched each time. Jobs are matched to the profile that fits them best, and get a resume built from that profile. ` : "Add a profile for a second resume, a related kind of job, or a career switch. "}${atMax && gh.mode === "azure" ? `Your plan allows ${maxProfiles}.` : ""}</p>
+      <div class="row">
+        <button class="btn small" onClick=${rename}>Rename${main && profiles.length < 2 ? " profile" : ""}</button>
+        ${main ? null : html`<button class="btn small" onClick=${remove}>Delete profile</button>`}
+      </div>
+    </div>
     <div class="subtabs wrapw">
       <button class="chip" aria-pressed=${sub === "profile"} onClick=${() => setRoute("profile")}>My details</button>
       <button class="chip" aria-pressed=${sub === "search"} onClick=${() => setRoute("search")}>Search preferences</button>
     </div>
-    ${sub === "search" ? html`<${SearchEditor} ...${ctx} />` : html`<${ProfileEditor} ...${ctx} />`}
+    ${sub === "search"
+      ? html`<${SearchEditor} key=${"s" + P.id} ...${ctx} dir=${profileDir(P.id)} search=${main ? ctx.search : psearch} setSearch=${main ? ctx.setSearch : setPsearch} resume=${P.resume} />`
+      : html`<${ProfileEditor} key=${"p" + P.id} ...${ctx} pid=${P.id} dir=${profileDir(P.id)} resume=${P.resume} setResume=${main ? ctx.setResume : () => loadProfiles()} />`}
+    ${creating ? html`<${NewProfile} ...${ctx} onClose=${() => setCreating(false)} onDone=${async (id) => { setCreating(false); await loadProfiles(); setPid(id); }} />` : null}
+  </div>`;
+}
+
+function NewProfile({ resume, search, say, onClose, onDone }) {
+  const [name, setName] = useState("");
+  const [mode, setMode] = useState("switch");
+  const [titles, setTitles] = useState("");
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [fams, setFams] = useState(null);
+  useEffect(() => { loadRelated().then(setFams); }, []);
+  const list = lines(titles);
+  const suggest = fams ? relatedTitles(list.length ? list : [], 10, fams) : [];
+  const addTitle = (t) => setTitles(lines(titles).concat(t).join("\n"));
+  const ok = name.trim() && (mode === "switch" ? list.length > 0 : !!file);
+  async function create() {
+    setBusy(true);
+    try {
+      const id = (name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 16) || "profile") + "-" + Date.now().toString(36).slice(-4);
+      if (mode === "switch") {
+        // same resume, aimed at different jobs: the engine adds related titles to these on its first search
+        const s = clone(search || {});
+        s.queries = list;
+        s.title_terms = { ...(s.title_terms || {}), required: [] };
+        s.description_keywords = {};
+        delete s.related_added; delete s._related_v;
+        await gh.putText(`profiles/${id}/resume.json`, JSON.stringify(resume, null, 2) + "\n", "app: new profile");
+        await gh.putText(`profiles/${id}/search.json`, JSON.stringify(s, null, 2) + "\n", "app: new profile");
+        await saveIndex((idx) => { idx.profiles.push({ id, name: name.trim().slice(0, 40) }); });
+        say(`${name.trim()} profile created. Its first search is running; jobs arrive in about 5–10 minutes.`);
+      } else {
+        await saveIndex((idx) => { idx.profiles.push({ id, name: name.trim().slice(0, 40) }); });
+        const ext = file.name.split(".").pop().toLowerCase();
+        await gh.putBase64(`uploads/resume.${ext}`, await gh.fileToBase64(file), "app: upload resume");
+        await gh.request("import_resume", { path: `uploads/resume.${ext}`, profile: id, reset_search: true });
+        say(`Reading the resume for ${name.trim()}. Its jobs arrive in about 5–10 minutes.`);
+      }
+      await onDone(id);
+    } catch (e) { say(e.message); }
+    setBusy(false);
+  }
+  return html`<div class="modal" role="dialog" aria-modal="true" aria-label="New profile" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+    <div class="card">
+      <h2>New profile</h2>
+      <div class="field"><label for="pn">Name</label><input id="pn" class="input" placeholder="e.g. Product management, or Data roles" value=${name} onInput=${(e) => setName(e.target.value)} /></div>
+      <div class="chips" role="radiogroup" aria-label="How to start">
+        <button class="chip" role="radio" aria-checked=${mode === "switch"} aria-pressed=${mode === "switch"} onClick=${() => setMode("switch")}>Same resume, different jobs</button>
+        <button class="chip" role="radio" aria-checked=${mode === "upload"} aria-pressed=${mode === "upload"} onClick=${() => setMode("upload")}>Upload another resume</button>
+      </div>
+      ${mode === "switch" ? html`
+        <p class="hint">For a career switch or a related field. Your current resume is copied; edit it for this direction any time in My details.</p>
+        <div class="field"><label for="pt">Job titles to look for, one per line</label>
+          <textarea id="pt" class="input" rows="4" placeholder="Product Manager" value=${titles} onInput=${(e) => setTitles(e.target.value)}></textarea></div>
+        ${list.length && suggest.length ? html`<p class="hint">Related titles, tap to add:</p>
+          <div class="chips">${suggest.map((t) => html`<button class="chip" onClick=${() => addTitle(t)}>+ ${t}</button>`)}</div>`
+        : !list.length && fams ? html`<p class="hint">Or pick a direction:</p>
+          <div class="chips">${directions(fams).map((d) => html`<button class="chip" onClick=${() => { setTitles(d.titles.join("\n")); if (!name.trim()) setName(d.name); }}>${d.name}</button>`)}</div>` : null}`
+      : html`<p class="hint">A resume written for a different kind of job. It's read like your first one, and gets its own search settings.</p>
+        <input type="file" accept=".pdf,.docx,.txt" aria-label="Resume file" onChange=${(e) => setFile(e.target.files?.[0] || null)} />`}
+      <div class="row" style="margin-top:14px"><span class="spacer"></span>
+        <button class="btn" onClick=${onClose}>Cancel</button>
+        <button class="btn primary" disabled=${!ok || busy} onClick=${create}>${busy ? "Creating…" : "Create profile"}</button></div>
+    </div>
   </div>`;
 }
 
@@ -334,8 +462,11 @@ function Onboard({ resume, say, refresh, file }) {
 
 // ------------------------------------------------------------------ job list
 
-function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, refresh, search }) {
+function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, refresh, search, profiles, profileOf }) {
   const [tab, setTab] = useState(restore("jr.tab", "inbox"));
+  const [pf, setPf] = useState(restore("jr.pf", "all"));
+  useEffect(() => store("jr.pf", pf), [pf]);
+  const many = (profiles || []).length > 1;
   const [q, setQ] = useState("");
   const [where, setWhere] = useState(restore("jr.where", ""));
   const [f, setF] = useState(restore("jr.filters", { remote: false, ready: false, newest: false, home: false }));
@@ -346,6 +477,7 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
   const home = (search?.locations?.country || "CA");
 
   let list = jobs.filter((j) => (tab === "inbox" ? !st(j) : tab === "saved" ? st(j) === "saved" : PIPE.includes(st(j))));
+  if (many && pf !== "all") list = list.filter((j) => (j.profile || "main") === pf);
   if (f.remote) list = list.filter((j) => j.remote);
   if (f.home) list = list.filter((j) => j.country === home);
   if (f.ready) list = list.filter((j) => j.resume_pdf);
@@ -366,6 +498,10 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
         <input aria-label="Search title or company" placeholder="Title or company" value=${q} onInput=${(e) => setQ(e.target.value)} />
         <input aria-label="Location" placeholder="City, province or Remote" value=${where} onInput=${(e) => setWhere(e.target.value)} />
       </div>
+      ${many ? html`<div class="chips" role="group" aria-label="Profile">
+        <button class="chip" aria-pressed=${pf === "all"} onClick=${() => setPf("all")}>All profiles</button>
+        ${profiles.map((p) => html`<button class="chip" aria-pressed=${pf === p.id} onClick=${() => setPf(p.id)}>${p.name} <span class="hint">${jobs.filter((j) => (j.profile || "main") === p.id).length}</span></button>`)}
+      </div>` : null}
       <div class="chips">
         <button class="chip" aria-pressed=${f.home} onClick=${() => toggle("home")}>${{ US: "US", AU: "Australia", IN: "India" }[home] || "Canada"}</button>
         <button class="chip" aria-pressed=${f.remote} onClick=${() => toggle("remote")}>Remote</button>
@@ -388,6 +524,7 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
             <div class="tags">
               ${PIPE.includes(st(j)) ? html`<span class=${"tag st-" + st(j)}>${LABEL[st(j)]}</span>` : null}
               ${newIds.has(j.id) ? html`<span class="tag new">New</span>` : null}
+              ${many ? html`<span class="tag profile">${profileOf(j).name}</span>` : null}
               ${j.manual ? html`<span class="tag">Added by you</span>` : null}
               ${j.resume_pdf ? html`<span class="tag ready">${j.tailor_method === "claude" ? "AI resume" : j.tailor_method === "edited" ? "Your edits" : "Resume ready"}</span>` : null}
               ${j.remote ? html`<span class="tag">Remote</span>` : null}
@@ -412,7 +549,7 @@ function Stats({ statuses }) {
 
 // ------------------------------------------------------------------ job detail + review & edit
 
-function Detail({ job, resume, base, statuses, setStatus, say, setSel }) {
+function Detail({ job, resume, base, statuses, setStatus, say, setSel, profile }) {
   const entry = statuses[job.id];
   const [tailored, setTailored] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -471,6 +608,7 @@ function Detail({ job, resume, base, statuses, setStatus, say, setSel }) {
       <div><h2>${job.title}</h2>
         <div class="co">${job.company}${job.location ? `, ${job.location}` : ""}</div>
         <div class="hint">${[job.salary, age(job) && `posted ${age(job)} ago`, `via ${job.source}${job.also_on?.length ? " and " + job.also_on.join(", ") : ""}`].filter(Boolean).join(", ")}</div>
+        ${profile ? html`<div class="hint">Matched your <b>${profile.name}</b> profile; the resume below is built from it.</div>` : null}
       </div></div>
 
     <div class="actions">
@@ -644,7 +782,7 @@ function Boards({ search, resume }) {
 
 // ------------------------------------------------------------------ profile editor
 
-function ProfileEditor({ resume, setResume, say }) {
+function ProfileEditor({ resume, setResume, say, dir = "profile", pid = "main" }) {
   const [d, setD] = useState(() => clone(resume || {}));
   const [busy, setBusy] = useState(false);
   const [up, setUp] = useState(false);
@@ -661,8 +799,8 @@ function ProfileEditor({ resume, setResume, say }) {
         ...e, id: e.id || ((e.company || "role").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 16) + i),
         flex: (e.flex || []).map((f) => (typeof f === "string" ? { text: f, tags: [] } : f)),
       }));
-      await gh.putText("profile/resume.json", JSON.stringify(out, null, 2) + "\n", "app: update profile");
-      setResume(out); store("jr.resume", out);
+      await gh.putText(`${dir}/resume.json`, JSON.stringify(out, null, 2) + "\n", "app: update profile");
+      setResume(out); if (pid === "main") store("jr.resume", out);
       say("Profile saved. Every resume is being re-written with it (about 5 minutes).");
     } catch (e) { say(e.message); }
     setBusy(false);
@@ -673,7 +811,7 @@ function ProfileEditor({ resume, setResume, say }) {
     try {
       const ext = f.name.split(".").pop().toLowerCase();
       await gh.putBase64(`uploads/resume.${ext}`, await gh.fileToBase64(f), "app: upload resume");
-      await gh.request("import_resume", { path: `uploads/resume.${ext}`, reset_search: false });
+      await gh.request("import_resume", { path: `uploads/resume.${ext}`, reset_search: false, ...(pid === "main" ? {} : { profile: pid }) });
       say("Reading your new resume. Refresh in about 3 minutes.");
     } catch (err) { say(err.message); }
     setUp(false);
@@ -765,9 +903,11 @@ function withDefaults(search, resume) {
   return d;
 }
 
-function SearchEditor({ search, setSearch, say, resume }) {
+function SearchEditor({ search, setSearch, say, resume, dir = "profile" }) {
   const [d, setD] = useState(() => withDefaults(search, resume));
   const [busy, setBusy] = useState(false);
+  const [fams, setFams] = useState(null);
+  useEffect(() => { loadRelated().then(setFams); }, []);
   useEffect(() => setD(withDefaults(search, resume)), [search]);
   if (!search) return html`<div class="page">Loading your search settings…</div>`;
   const L = d.locations || (d.locations = {});
@@ -778,7 +918,7 @@ function SearchEditor({ search, setSearch, say, resume }) {
   async function save() {
     setBusy(true);
     try {
-      await gh.putText("profile/search.json", JSON.stringify(d, null, 2) + "\n", "Search settings updated from app");
+      await gh.putText(`${dir}/search.json`, JSON.stringify(d, null, 2) + "\n", "Search settings updated from app");
       setSearch(d);
       say("Saved. A new search is running; results in about 10–15 minutes.");
     } catch (e) { say(e.message); }
@@ -817,6 +957,16 @@ function SearchEditor({ search, setSearch, say, resume }) {
     <div class="card"><h3>What</h3>
       <div class="field"><label>Job titles and phrases to search, one per line</label>
         <textarea class="input" rows="7" value=${(d.queries || []).join("\n")} onInput=${(e) => set((n) => { n.queries = lines(e.target.value); })}></textarea></div>
+      ${(d.related_added?.titles || []).filter((t) => (d.queries || []).includes(t)).length ? html`<p class="hint">Added for you as related titles: ${d.related_added.titles.filter((t) => (d.queries || []).includes(t)).join(", ")}. Delete any line you don't want.</p>` : null}
+      ${(() => {
+        if (!fams) return null;
+        const base = [...(d.queries || []), ...((resume?.experience || []).slice(0, 3).map((e) => e.title))];
+        const more = relatedTitles(base, 10, fams).filter((t) => !(d.queries || []).includes(t));
+        const kws = relatedKeywords(base, 12, fams);
+        return html`${more.length ? html`<div class="field"><label>Related titles, tap to add</label>
+          <div class="chips">${more.map((t) => html`<button class="chip" onClick=${() => set((n) => { n.queries = [...(n.queries || []), t]; })}>+ ${t}</button>`)}</div></div>` : null}
+          ${kws.length ? html`<p class="hint">Keywords these jobs usually ask for: ${kws.join(", ")}. Jobs that mention them rank a little higher; add the ones you have to My details → Skills so your resumes show them.</p>` : null}`;
+      })()}
       <div class="field"><label>A job title must contain one of these words (blank = use the words from your search phrases)</label>
         <textarea class="input" rows="2" value=${(d.title_terms?.required || []).join(", ")} onInput=${(e) => set((n) => { n.title_terms = { ...(n.title_terms || {}), required: commas(e.target.value).map((x) => x.toLowerCase()) }; })}></textarea></div>
       <div class="field"><label>Skip titles containing</label>

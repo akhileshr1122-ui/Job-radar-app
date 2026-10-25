@@ -290,6 +290,13 @@ button.bar { cursor: pointer; }
 .invite-row { display: grid; grid-template-columns: 2fr 1fr 120px auto; gap: 8px; }
 @media (max-width: 700px) { .invite-row { grid-template-columns: 1fr; } }
 .subtabs { display: flex; gap: 8px; max-width: 880px; margin: 0 auto; padding: 20px 24px 0; }
+.profilebar { max-width: 880px; margin: 0 auto; padding: 20px 24px 0; display: grid; gap: 8px; }
+.profilebar .chips { flex-wrap: wrap; }
+.profilebar .hint { margin: 0; }
+.chip.add { border-style: dashed; }
+.chip.add:disabled { opacity: .5; cursor: not-allowed; }
+.tag.profile { background: var(--mist); color: var(--teal); border: 1px solid var(--line); }
+@media (max-width: 700px) { .profilebar { padding: 14px 14px 0; } }
 @media (max-width: 700px) { .subtabs { padding: 14px 14px 0; } }
 
 /* plans */

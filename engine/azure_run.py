@@ -162,9 +162,9 @@ def upload_user(uid, root, downloaded, since):
 
 # What each plan allows per person. Shown on the site in web/plans.js; keep the two in step.
 PLAN_LIMITS = {
-    "free": {"max_tailor_per_run": 10, "max_ai_per_day": 10, "shared_ai": False},
-    "plus": {"max_tailor_per_run": 25, "max_ai_per_day": 15, "shared_ai": True},
-    "pro": {"max_tailor_per_run": 40, "max_ai_per_day": 40, "shared_ai": True},
+    "free": {"max_tailor_per_run": 10, "max_ai_per_day": 10, "max_profiles": 2, "shared_ai": False},
+    "plus": {"max_tailor_per_run": 25, "max_ai_per_day": 15, "max_profiles": 3, "shared_ai": True},
+    "pro": {"max_tailor_per_run": 40, "max_ai_per_day": 40, "max_profiles": 5, "shared_ai": True},
 }
 
 
@@ -266,10 +266,23 @@ def run_user(uid, pool_path, kind, extra_args=()):
 
 # ------------------------------------------------------------------ bulk search
 
-def prepared_cfg(uid, template):
+def profile_cfgs(uid, template):
+    """Prepared settings for each of a person's extra profiles (another resume, a career switch)."""
+    out = {}
+    for e in ((get_json(f"users/{uid}/profiles/index.json", {}) or {}).get("profiles") or [])[:PLAN_LIMITS[plan_of(uid)]["max_profiles"] - 1]:
+        pid = str(e.get("id", "")) if isinstance(e, dict) else ""
+        if not pid or not pid.replace("-", "").isalnum() or len(pid) > 24:
+            continue
+        c = prepared_cfg(uid, template, f"profiles/{pid}")
+        if c:
+            out[pid] = c
+    return out
+
+
+def prepared_cfg(uid, template, folder="profile"):
     """A person's search settings with the same automatic fill-ins run.py uses."""
-    cfg = get_json(f"users/{uid}/profile/search.json") or json.loads(json.dumps(template))
-    resume = get_json(f"users/{uid}/profile/resume.json") or {}
+    cfg = get_json(f"users/{uid}/{folder}/search.json") or json.loads(json.dumps(template))
+    resume = get_json(f"users/{uid}/{folder}/resume.json") or {}
     if not resume.get("experience"):
         return None
     locs = cfg.setdefault("locations", {})
@@ -314,11 +327,14 @@ def bulk():
         cfg = prepared_cfg(uid, template)
         if cfg:
             people[uid] = cfg
-    log(f"bulk search for {len(people)} people")
+            for pid, c in profile_cfgs(uid, template).items():
+                people[f"{uid}/{pid}"] = c  # each extra profile's titles and companies join the shared search
+    n_people = len({k.split("/")[0] for k in people})
+    log(f"bulk search for {n_people} people ({len(people)} profiles)")
     load_geocache(get_json("shared/geocache.json", {}) or {})
     cache = get_json("shared/ats_cache.json", {}) or {}
     jstate = get_json("shared/jsearch_state.json", {}) or {}
-    pool, report = [], {"people": len(people), "searched": now()}
+    pool, report = [], {"people": n_people, "profiles": len(people), "searched": now()}
 
     if people:
         shared, rep = sources.fetch_shared(union_cfg(list(people.values()), template), cache)

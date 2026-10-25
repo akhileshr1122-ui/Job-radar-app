@@ -125,7 +125,8 @@ export function Tracker({ jobs, statuses, setStatus, openJob }) {
 
 // ------------------------------------------------------------------ resumes & documents
 
-export function Documents({ jobs, statuses, resume, base, say, openJob }) {
+export function Documents({ jobs, statuses, resume, base, say, openJob, profiles = [], mainName = "" }) {
+  const others = profiles.filter((p) => p.id !== "main");
   const [filter, setFilter] = useState("tracked");
   const tracked = (j) => !!statuses[j.id] && statuses[j.id].status !== "hidden";
   const list = jobs.filter((j) => j.resume_pdf && (filter === "all" || tracked(j))).sort((a, b) => (tracked(b) - tracked(a)) || b.score - a.score);
@@ -138,12 +139,13 @@ export function Documents({ jobs, statuses, resume, base, say, openJob }) {
     <div class="pagehead"><div><h1>Resumes</h1><p class="hint">Your standard resume and every version written for a job.</p></div></div>
 
     <section class="panel">
-      <div class="panel-head"><h2>Standard resume</h2></div>
+      <div class="panel-head"><h2>Standard resume${others.length ? "s" : ""}</h2></div>
       <p class="hint">Not tailored to any job. Good for job fairs and recruiters.</p>
-      <div class="row">
-        <button class="btn primary small" disabled=${!base || !resume} onClick=${() => resumePdf(base, resume).save(fileName(resume, null))}>Download PDF</button>
-        <button class="btn small" onClick=${() => download("data/resumes/base.docx", stem(resume, null) + ".docx", say)}>Download Word</button>
-      </div>
+      ${[{ id: "main", name: others.length ? mainName || "Main profile" : "", resume, base }, ...others].map((p) => html`<div class="row" style="margin:6px 0">
+        ${p.name ? html`<b style="min-width:180px">${p.name}</b>` : null}
+        <button class="btn primary small" disabled=${!p.base || !p.resume} onClick=${() => resumePdf(p.base, p.resume).save(fileName(p.resume, null))}>Download PDF</button>
+        <button class="btn small" disabled=${!p.resume} onClick=${() => download(`data/resumes/${p.id === "main" ? "base" : "base-" + p.id}.docx`, stem(p.resume, null) + ".docx", say)}>Download Word</button>
+      </div>`)}
     </section>
 
     <section class="panel">
