@@ -230,6 +230,16 @@ def _roles(exp):
     out = []
     for r in roles:
         r.pop("_fill", None)
+        if len(r["title"]) > 80 or (r["title"].rstrip().endswith(".") and len(r["title"].split()) > 6):
+            if out and r["title"]:
+                out[-1]["bullets"].append(r["title"])
+            r["title"] = ""
+        if not r["title"] and r["company"]:
+            parts = re.split(r"\s+(?:at|@|\||–|—)\s+|,\s+", r["company"], maxsplit=1)
+            if len(parts) == 2 and _looks_title(parts[0]):
+                r["title"], r["company"] = parts
+            elif _looks_title(r["company"]):
+                r["title"], r["company"] = r["company"], ""
         if not r["company"]:
             parts = re.split(r"\s+(?:at|@|\||–|—)\s+|,\s+", r["title"], maxsplit=1)
             if len(parts) == 2 and _looks_title(parts[0]):
@@ -375,7 +385,8 @@ def import_resume(path, cfg):
 def setup_search(cfg, resume):
     """First-time search settings from a freshly imported resume."""
     clean = lambda t: re.sub(r"\s*\(.*?\)|/.*$", "", t).strip()
-    titles = list(dict.fromkeys(clean(e["title"]) for e in resume["experience"] if e.get("title")))[:4]
+    looks_like_title = lambda t: 0 < len(t) <= 60 and len(t.split()) <= 8 and not t.rstrip().endswith(".")
+    titles = list(dict.fromkeys(clean(e["title"]) for e in resume["experience"] if looks_like_title(clean(e.get("title") or ""))))[:4]
     if titles:
         cfg["queries"] = list(dict.fromkeys(titles + [clean(h) for h in resume.get("headlines", {}).values() if h and len(h) < 60][:2]))
     loc = resume.get("contact", {}).get("location", "")

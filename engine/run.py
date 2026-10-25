@@ -159,6 +159,8 @@ def main(argv=None):
         cfg = load(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profile", "search.json"), {})
         cfg.setdefault("_setup", True)
         save(os.path.join(ROOT, "profile", "search.json"), cfg)
+    # a search phrase is a job title, not a sentence (older resume imports sometimes picked up a bullet)
+    cfg["queries"] = [q for q in cfg.get("queries", []) if isinstance(q, str) and 0 < len(q.strip()) <= 60 and not q.rstrip().endswith(".")]
     req_files = sorted(glob.glob(os.path.join(REQ_DIR, "*.json")))
     reqs = [dict(load(f, {}), _file=f) for f in req_files]
 

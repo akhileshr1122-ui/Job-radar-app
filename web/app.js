@@ -285,6 +285,25 @@ function Setup({ onDone, say }) {
 function Onboard({ resume, say, refresh, file }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [run, setRun] = useState(null);
+  // A resume being read shows as a queued/running run. Keep showing that (on every tab) until it's done,
+  // then load the new profile, instead of asking for the resume again.
+  useEffect(() => {
+    if (gh.mode !== "azure") return;
+    let stop = false, was = null;
+    const tick = async () => {
+      const r = await gh.lastRun().catch(() => null);
+      if (stop) return;
+      setRun(r);
+      const busyNow = r && (r.state === "queued" || r.state === "running");
+      if (was && !busyNow) refresh();
+      was = busyNow;
+    };
+    tick();
+    const t = setInterval(tick, 15000);
+    return () => { stop = true; clearInterval(t); };
+  }, []);
+  const reading = sent || (run && (run.state === "queued" || run.state === "running"));
   async function upload(e) {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -294,7 +313,7 @@ function Onboard({ resume, say, refresh, file }) {
       const ext = f.name.split(".").pop().toLowerCase();
       await gh.putBase64(`uploads/resume.${ext}`, await gh.fileToBase64(f), "app: upload resume");
       await gh.request("import_resume", { path: `uploads/resume.${ext}`, reset_search: true });
-      setSent(true);
+      setSent(true); setRun({ state: "queued" });
     } catch (err) { say(err.message); }
     setBusy(false);
   }
@@ -303,8 +322,8 @@ function Onboard({ resume, say, refresh, file }) {
     <p class="hint">Job Radar reads it once to build your profile and your search: job titles to look for, your city, your skills. You can fix anything afterwards in My profile.</p>
     ${file?.note ? html`<p class="hint">${file.note}</p>` : null}
     <div class="card">
-      ${sent ? html`<h3>Reading your resume</h3><p>This takes 2–4 minutes. Your first job search starts right after, and results arrive about 10 minutes later.</p>
-        <button class="btn primary" onClick=${refresh}>Check now</button>` : html`
+      ${reading ? html`<h3>Reading your resume</h3><p>This takes 2–4 minutes. Your first job search runs right after, and this page opens your jobs by itself when it's done.</p>
+        <${RadarPulse} /><button class="btn primary" onClick=${refresh}>Check now</button>` : html`
         <h3>Upload your resume</h3>
         <input type="file" accept=".pdf,.docx,.txt" onChange=${upload} disabled=${busy} />
         <p class="hint">${busy ? "Uploading…" : "PDF or Word. The file is deleted after it's read."}</p>`}
