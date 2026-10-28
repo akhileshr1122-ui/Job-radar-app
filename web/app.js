@@ -26,6 +26,9 @@ function App() {
   const [toast, setToast] = useState(null);
   const [adding, setAdding] = useState(false);
   const [extra, setExtra] = useState(restore("jr.profiles", { mainName: "", list: [] }));
+  const [pid, setPidRaw] = useState(restore("jr.active", "all"));
+  const setPid = useCallback((id) => { setPidRaw(id); store("jr.active", id); setSel(null); }, []);
+  const [creating, setCreating] = useState(false);
   const saveTimer = useRef(null);
   // extra profiles (another resume, a career switch): profiles/index.json + each one's resume and standard resume
   const loadProfiles = useCallback(async () => {
@@ -130,14 +133,18 @@ function App() {
   const title = name ? `${name}'s Job Radar` : "Job Radar";
   document.title = title;
   const needsResume = !resume || !(resume.experience || []).length;
-  const jobs = file?.jobs || [];
+  const profilesEarly = [{ id: "main" }, ...extra.list];
+  const activeP = profilesEarly.some((p) => p.id === pid) ? pid : "all";
+  const allJobs = file?.jobs || [];
+  const jobs = activeP === "all" ? allJobs : allJobs.filter((j) => (j.profile || "main") === activeP);
   const job = sel && jobs.find((j) => j.id === sel);
   const openJob = (id) => { setSel(id); setRouteRaw("jobs"); scrollTo(0, 0); };
   const profiles = [{ id: "main", name: extra.mainName || "Main profile", resume, base }, ...extra.list];
   const profileOf = (j) => profiles.find((p) => p.id === (j?.profile || "main")) || profiles[0];
   const maxProfiles = gh.mode === "azure" ? gh.me?.maxProfiles || 2 : 5;
   const ctx = { file, jobs, resume, search, report, base, statuses, setStatus, say, refresh, loading, setRoute, setSel, setResume, setSearch, title, openJob, run,
-    searchNow: gh.mode === "azure" ? searchNow : null, profiles, profileOf, loadProfiles, maxProfiles, mainName: extra.mainName };
+    searchNow: gh.mode === "azure" ? searchNow : null, profiles, profileOf, loadProfiles, maxProfiles, mainName: extra.mainName,
+    active: activeP, setPid, newProfile: () => setCreating(true) };
 
   const counts = {
     inbox: jobs.filter((j) => !statuses[j.id]).length,
@@ -175,6 +182,8 @@ function App() {
       <div class="appbar-top">
         <button class="wordmark" onClick=${() => setRoute("home")} aria-label="Home"><img src="icon.svg" alt="" width="28" height="28" />
           <span><b class="long">${title}</b><b class="short">${name ? `${name.split(" ")[0]}'s Job Radar` : "Job Radar"}</b><small>${searched}</small></span></button>
+        ${needsResume ? null : html`<${ProfileSwitch} profiles=${profiles} active=${activeP} setPid=${setPid} jobs=${allJobs} atMax=${profiles.length >= maxProfiles}
+          onNew=${() => setCreating(true)} onManage=${() => setRoute("profile")} />`}
         <span class="spacer"></span>
         <button class="btn light small hide-s" onClick=${() => setAdding(true)}>Add a job</button>
         ${gh.mode === "azure" ? html`<button class="btn amber small" onClick=${searchNow}>Search now</button>`
@@ -191,6 +200,7 @@ function App() {
     </header>
     <main class=${"appmain" + (current === "jobs" ? " for-jobs" : "")}>${main}</main>
     ${adding ? html`<${AddJob} say=${say} onClose=${() => setAdding(false)} />` : null}
+    ${creating ? html`<${NewProfile} ...${ctx} onClose=${() => setCreating(false)} onDone=${async (id) => { setCreating(false); await loadProfiles(); setPid(id); }} />` : null}
     ${toast ? html`<div class="toast" role="status">${toast}</div>` : null}
   </div>`;
 }
@@ -231,12 +241,35 @@ async function saveIndex(mutate) {
   await gh.putText("profiles/index.json", JSON.stringify(idx, null, 2) + "\n", "app: profiles");
 }
 
-function ProfileTabs({ sub, setRoute, profiles, loadProfiles, maxProfiles, ...ctx }) {
-  const [pid, setPidRaw] = useState(restore("jr.pid", "main"));
-  const setPid = (id) => { setPidRaw(id); store("jr.pid", id); };
-  const [creating, setCreating] = useState(false);
+function ProfileSwitch({ profiles, active, setPid, jobs, atMax, onNew, onManage }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!e.target.closest?.(".pswitch")) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    addEventListener("click", close); addEventListener("keydown", esc);
+    return () => { removeEventListener("click", close); removeEventListener("keydown", esc); };
+  }, [open]);
+  const many = profiles.length > 1;
+  const cur = active === "all" ? (many ? "All profiles" : profiles[0].name) : (profiles.find((p) => p.id === active) || profiles[0]).name;
+  const n = (id) => jobs.filter((j) => (j.profile || "main") === id).length;
+  const pick = (id) => { setPid(id); setOpen(false); };
+  return html`<div class="pswitch">
+    <button class="pswitch-btn" aria-haspopup="menu" aria-expanded=${open} onClick=${() => setOpen(!open)}>
+      <small>Profile</small><span>${cur}</span><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 3l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+    ${open ? html`<div class="menu" role="menu">
+      ${many ? html`<button role="menuitemradio" aria-checked=${active === "all"} onClick=${() => pick("all")}><span>All profiles</span><small>${jobs.length}</small></button>` : null}
+      ${profiles.map((p) => html`<button role="menuitemradio" aria-checked=${active === p.id || (!many && active === "all")} onClick=${() => pick(many ? p.id : "all")}><span>${p.name}</span><small>${n(p.id)}</small></button>`)}
+      <hr />
+      <button role="menuitem" disabled=${atMax} onClick=${() => { setOpen(false); onNew(); }}>+ New profile${atMax ? html`<small>plan limit</small>` : null}</button>
+      <button role="menuitem" onClick=${() => { setOpen(false); onManage(); }}>Edit profiles</button>
+    </div>` : null}
+  </div>`;
+}
+
+function ProfileTabs({ sub, setRoute, profiles, loadProfiles, maxProfiles, active, setPid, newProfile, ...ctx }) {
   const [psearch, setPsearch] = useState(null);
-  const P = profiles.find((p) => p.id === pid) || profiles[0];
+  const P = profiles.find((p) => p.id === active) || profiles[0];
   const main = P.id === "main";
   useEffect(() => {
     if (main) return;
@@ -254,7 +287,7 @@ function ProfileTabs({ sub, setRoute, profiles, loadProfiles, maxProfiles, ...ct
   }
   async function remove() {
     if (!confirm(`Delete the ${P.name} profile? Its jobs move to your other profiles if they still match.`)) return;
-    try { await saveIndex((idx) => { idx.profiles = idx.profiles.filter((x) => x.id !== P.id); }); setPid("main"); await loadProfiles(); say("Profile deleted."); }
+    try { await saveIndex((idx) => { idx.profiles = idx.profiles.filter((x) => x.id !== P.id); }); setPid("all"); await loadProfiles(); say("Profile deleted."); }
     catch (e) { say(e.message); }
   }
   const atMax = profiles.length >= maxProfiles;
@@ -262,7 +295,7 @@ function ProfileTabs({ sub, setRoute, profiles, loadProfiles, maxProfiles, ...ct
     <div class="profilebar wrapw">
       <div class="chips" role="group" aria-label="Profiles">
         ${profiles.map((p) => html`<button class="chip" aria-pressed=${p.id === P.id} onClick=${() => setPid(p.id)}>${p.name}</button>`)}
-        <button class="chip add" disabled=${atMax} title=${atMax ? `Your plan allows ${maxProfiles} profiles` : ""} onClick=${() => setCreating(true)}>+ New profile</button>
+        <button class="chip add" disabled=${atMax} title=${atMax ? `Your plan allows ${maxProfiles} profiles` : ""} onClick=${newProfile}>+ New profile</button>
       </div>
       <p class="hint">${profiles.length > 1 ? `Every profile is searched each time. Jobs are matched to the profile that fits them best, and get a resume built from that profile. ` : "Add a profile for a second resume, a related kind of job, or a career switch. "}${atMax && gh.mode === "azure" ? `Your plan allows ${maxProfiles}.` : ""}</p>
       <div class="row">
@@ -277,7 +310,6 @@ function ProfileTabs({ sub, setRoute, profiles, loadProfiles, maxProfiles, ...ct
     ${sub === "search"
       ? html`<${SearchEditor} key=${"s" + P.id} ...${ctx} dir=${profileDir(P.id)} search=${main ? ctx.search : psearch} setSearch=${main ? ctx.setSearch : setPsearch} resume=${P.resume} />`
       : html`<${ProfileEditor} key=${"p" + P.id} ...${ctx} pid=${P.id} dir=${profileDir(P.id)} resume=${P.resume} setResume=${main ? ctx.setResume : () => loadProfiles()} />`}
-    ${creating ? html`<${NewProfile} ...${ctx} onClose=${() => setCreating(false)} onDone=${async (id) => { setCreating(false); await loadProfiles(); setPid(id); }} />` : null}
   </div>`;
 }
 
@@ -462,11 +494,9 @@ function Onboard({ resume, say, refresh, file }) {
 
 // ------------------------------------------------------------------ job list
 
-function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, refresh, search, profiles, profileOf }) {
+function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, refresh, search, profiles, profileOf, active }) {
   const [tab, setTab] = useState(restore("jr.tab", "inbox"));
-  const [pf, setPf] = useState(restore("jr.pf", "all"));
-  useEffect(() => store("jr.pf", pf), [pf]);
-  const many = (profiles || []).length > 1;
+  const many = (profiles || []).length > 1 && active === "all";
   const [q, setQ] = useState("");
   const [where, setWhere] = useState(restore("jr.where", ""));
   const [f, setF] = useState(restore("jr.filters", { remote: false, ready: false, newest: false, home: false }));
@@ -477,7 +507,6 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
   const home = (search?.locations?.country || "CA");
 
   let list = jobs.filter((j) => (tab === "inbox" ? !st(j) : tab === "saved" ? st(j) === "saved" : PIPE.includes(st(j))));
-  if (many && pf !== "all") list = list.filter((j) => (j.profile || "main") === pf);
   if (f.remote) list = list.filter((j) => j.remote);
   if (f.home) list = list.filter((j) => j.country === home);
   if (f.ready) list = list.filter((j) => j.resume_pdf);
@@ -498,10 +527,6 @@ function JobList({ jobs, statuses, sel, setSel, counts, onAdd, file, loading, re
         <input aria-label="Search title or company" placeholder="Title or company" value=${q} onInput=${(e) => setQ(e.target.value)} />
         <input aria-label="Location" placeholder="City, province or Remote" value=${where} onInput=${(e) => setWhere(e.target.value)} />
       </div>
-      ${many ? html`<div class="chips" role="group" aria-label="Profile">
-        <button class="chip" aria-pressed=${pf === "all"} onClick=${() => setPf("all")}>All profiles</button>
-        ${profiles.map((p) => html`<button class="chip" aria-pressed=${pf === p.id} onClick=${() => setPf(p.id)}>${p.name} <span class="hint">${jobs.filter((j) => (j.profile || "main") === p.id).length}</span></button>`)}
-      </div>` : null}
       <div class="chips">
         <button class="chip" aria-pressed=${f.home} onClick=${() => toggle("home")}>${{ US: "US", AU: "Australia", IN: "India" }[home] || "Canada"}</button>
         <button class="chip" aria-pressed=${f.remote} onClick=${() => toggle("remote")}>Remote</button>

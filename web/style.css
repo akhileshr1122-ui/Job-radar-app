@@ -187,6 +187,20 @@ code { background: var(--mist); padding: 1px 5px; border-radius: 4px; font-size:
 .btn.amber:hover { filter: brightness(1.05); }
 .link { all: unset; cursor: pointer; color: var(--teal-2); font-weight: 500; }
 .link:hover { text-decoration: underline; }
+.pswitch { position: relative; min-width: 0; }
+.pswitch-btn { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center;
+  padding: 5px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: #fff; max-width: 240px; }
+.pswitch-btn:hover, .pswitch-btn[aria-expanded="true"] { background: rgba(255,255,255,.16); }
+.pswitch-btn:focus-visible { outline: 2px solid var(--amber, #e8a33d); outline-offset: 2px; }
+.pswitch-btn small { grid-column: 1 / -1; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; line-height: 1.2; }
+.pswitch-btn span { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pswitch .menu { left: 0; right: auto; top: 50px; }
+.menu button[role="menuitemradio"], .menu button[role="menuitem"] { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.menu button small { color: var(--ink-3); font-size: 12px; }
+.menu button[aria-checked="true"] { background: var(--mist); font-weight: 600; }
+.menu button[aria-checked="true"] span::before { content: "✓ "; color: var(--teal); }
+.menu button:disabled { opacity: .5; cursor: not-allowed; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .acct { position: relative; }
 .avatar { all: unset; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.14); font-weight: 700; color: #fff; }
 .avatar:hover, .avatar[aria-expanded="true"] { background: rgba(255,255,255,.26); }
@@ -203,6 +217,9 @@ code { background: var(--mist); padding: 1px 5px; border-radius: 4px; font-size:
   .wordmark small { display: none; }
   .wordmark .long { display: none; }
   .wordmark .short { display: block; }
+  .pswitch-btn { padding: 4px 9px; max-width: 150px; }
+  .pswitch-btn small { display: none; }
+  .pswitch-btn span { font-size: 13px; }
 }
 
 /* ---------- jobs: list + detail */
